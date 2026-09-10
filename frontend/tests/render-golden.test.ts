@@ -54,9 +54,9 @@ function renderSignature(template: TemplateId, aspectRatio: AspectRatio, time = 
 
 describe("low-resolution visualizer golden frames", () => {
   const golden: Record<string, string> = {
-    "spectrum-cover/16:9": "180x101:931b3229",
-    "spectrum-cover/9:16": "101x180:f19c93d2",
-    "spectrum-cover/1:1": "180x180:b564a44d",
+    "spectrum-cover/16:9": "180x101:8d4df7c0",
+    "spectrum-cover/9:16": "101x180:eb96f543",
+    "spectrum-cover/1:1": "180x180:c73af8cd",
     "vinyl-particle/16:9": "180x101:9e18a783",
     "vinyl-particle/9:16": "101x180:ebd2265f",
     "vinyl-particle/1:1": "180x180:b1c9b262",

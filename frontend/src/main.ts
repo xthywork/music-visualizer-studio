@@ -85,37 +85,51 @@ app.innerHTML = `
       <p class="storage-usage" id="storage-usage">正在讀取本機用量…</p>
     </aside>
     <section class="workspace">
-      <header class="topbar">
-        <div><span class="eyebrow">Browser-rendered video</span><h1>讓聲音變得看得見。</h1></div>
-        <div class="privacy-chip">音訊不會上傳或保存</div>
-      </header>
       <div class="layout">
-        <section class="panel"><div class="panel-body">
+        <section class="panel control-panel"><div class="panel-body">
           <div class="section">
-            <div class="section-title"><h2>1. 選擇音訊</h2><span>MP3 · WAV · M4A · 最長 10 分鐘</span></div>
-            <label class="dropzone" id="audio-dropzone"><input id="audio-input" type="file" accept=".mp3,.wav,.m4a,audio/mpeg,audio/wav,audio/mp4" /><span class="upload-icon">♪</span><strong>拖曳音訊或點擊選擇</strong><small>檔案只在目前的瀏覽器工作階段中使用</small></label>
-            <p class="file-status" id="file-status">尚未選擇音訊</p>
-          </div>
-          <div class="section">
-            <div class="section-title"><h2>2. 選擇動畫</h2><span>3 個模板</span></div>
-            <div class="templates" id="templates"></div>
-          </div>
-          <div class="section">
-            <div class="section-title"><h2>3. 自訂內容</h2><span>即時預覽</span></div>
-            <div class="fields">
+            <div class="section-title"><h2>1. 歌曲資訊</h2><span>即時預覽</span></div>
+            <div class="fields song-fields">
               <label class="field">歌名<input id="title-input" value="${state.title}" maxlength="80" /></label>
               <label class="field">藝人<input id="artist-input" value="${state.artist}" maxlength="80" /></label>
-              <div class="field image-field"><span>封面圖</span><label class="image-dropzone" id="cover-dropzone"><input id="cover-input" type="file" accept="image/png,image/jpeg,image/webp" /><span class="image-preview" id="cover-preview"><span class="image-placeholder">＋</span><img id="cover-preview-image" alt="封面圖預覽" hidden /></span><span class="image-drop-copy"><strong>拖曳或點擊選擇</strong><small id="cover-name">尚未選擇圖片</small></span></label><button class="image-remove" id="cover-remove" type="button" hidden>移除封面圖</button></div>
-              <div class="field image-field"><span>背景圖</span><label class="image-dropzone" id="background-dropzone"><input id="background-input" type="file" accept="image/png,image/jpeg,image/webp" /><span class="image-preview" id="background-preview"><span class="image-placeholder">＋</span><img id="background-preview-image" alt="背景圖預覽" hidden /></span><span class="image-drop-copy"><strong>拖曳或點擊選擇</strong><small id="background-name">尚未選擇圖片</small></span></label><button class="image-remove" id="background-remove" type="button" hidden>移除背景圖</button></div>
             </div>
           </div>
           <div class="section">
-            <div class="section-title"><h2>4. 輸出設定</h2><span id="dimensions-label">1920 × 1080</span></div>
-            <div class="fields">
-              <label class="field">比例<select id="ratio-select"></select></label>
-              <label class="field">解析度<select id="resolution-select"></select></label>
-              <label class="field">影格率<select id="fps-select"></select></label>
-              <label class="field">渲染模式<select disabled><option>自動（瀏覽器優先）</option></select></label>
+            <div class="section-title"><h2>2. 選擇素材</h2><span>音訊與圖片</span></div>
+            <div class="media-grid">
+              <div class="media-slot audio-slot">
+                <span class="media-label">音訊</span>
+                <label class="dropzone" id="audio-dropzone"><input id="audio-input" type="file" accept=".mp3,.wav,.m4a,audio/mpeg,audio/wav,audio/mp4" /><span class="upload-icon">♪</span><strong>拖曳或點擊選擇</strong><small>MP3 · WAV · M4A</small></label>
+                <p class="file-status" id="file-status">尚未選擇音訊</p>
+              </div>
+              <div class="media-slot image-field">
+                <span class="media-label">封面圖</span>
+                <label class="image-dropzone" id="cover-dropzone"><input id="cover-input" type="file" accept="image/png,image/jpeg,image/webp" /><span class="image-preview" id="cover-preview"><span class="image-placeholder">＋</span><img id="cover-preview-image" alt="封面圖預覽" hidden /></span><span class="image-drop-copy"><strong>拖曳或點擊選擇</strong><small id="cover-name">尚未選擇圖片</small></span></label>
+                <button class="image-remove" id="cover-remove" type="button" hidden>移除封面圖</button>
+              </div>
+              <div class="media-slot image-field">
+                <span class="media-label">背景圖</span>
+                <label class="image-dropzone" id="background-dropzone"><input id="background-input" type="file" accept="image/png,image/jpeg,image/webp" /><span class="image-preview" id="background-preview"><span class="image-placeholder">＋</span><img id="background-preview-image" alt="背景圖預覽" hidden /></span><span class="image-drop-copy"><strong>拖曳或點擊選擇</strong><small id="background-name">尚未選擇圖片</small></span></label>
+                <button class="image-remove" id="background-remove" type="button" hidden>移除背景圖</button>
+              </div>
+            </div>
+          </div>
+          <div class="section">
+            <div class="section-title"><h2>3. 動畫與輸出設定</h2><span>瀏覽器處理</span></div>
+            <div class="settings-grid">
+              <div class="setting-block">
+                <div class="subsection-title"><strong>動畫模板</strong><span>2 個模板</span></div>
+                <div class="templates" id="templates"></div>
+              </div>
+              <div class="setting-block output-settings">
+                <div class="subsection-title"><strong>輸出設定</strong><span id="dimensions-label">1920 × 1080</span></div>
+                <div class="fields">
+                  <label class="field">比例<select id="ratio-select"></select></label>
+                  <label class="field">解析度<select id="resolution-select"></select></label>
+                  <label class="field">影格率<select id="fps-select"></select></label>
+                  <label class="field">渲染模式<select disabled><option>自動（瀏覽器優先）</option></select></label>
+                </div>
+              </div>
             </div>
           </div>
         </div></section>

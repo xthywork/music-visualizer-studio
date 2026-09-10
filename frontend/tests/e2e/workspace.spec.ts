@@ -28,7 +28,8 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("renders, stores, reopens, and downloads a local MP4", async ({ page }, testInfo) => {
-  await expect(page.getByRole("heading", { name: "讓聲音變得看得見。" })).toBeVisible();
+  await expect(page.locator(".topbar")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "1. 歌曲資訊" })).toBeVisible();
   await page.locator("#ratio-select").selectOption("1:1");
   await page.locator("#resolution-select").selectOption("1-1-720p");
   await page.locator("#title-input").fill("E2E Signal");
@@ -40,6 +41,11 @@ test("renders, stores, reopens, and downloads a local MP4", async ({ page }, tes
   await generate.click();
   await expect(page.locator("#output-actions")).toBeVisible({ timeout: 120_000 });
   await expect(page.locator("#output-preview")).toBeVisible();
+  const fittedOutput = await page.evaluate(() => {
+    const video = document.querySelector("#output-preview")!.getBoundingClientRect();
+    return document.scrollingElement!.scrollHeight <= innerHeight && video.bottom <= innerHeight;
+  });
+  expect(fittedOutput).toBe(true);
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("link", { name: "下載 MP4" }).click();
@@ -99,6 +105,31 @@ test("accepts audio and artwork by drag and drop", async ({ page }) => {
   await expect(page.locator("#background-name")).toHaveText("background.png");
   await expect(page.locator("#cover-preview-image")).toBeVisible();
   await expect(page.locator("#background-preview-image")).toBeVisible();
+});
+
+test("fits the three-step workspace in a desktop viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 1365, height: 768 });
+  await expect(page.locator(".section-title h2")).toHaveText([
+    "1. 歌曲資訊",
+    "2. 選擇素材",
+    "3. 動畫與輸出設定",
+  ]);
+  const layout = await page.evaluate(() => {
+    const slots = [...document.querySelectorAll(".media-slot")].map((element) => element.getBoundingClientRect().width);
+    const renderButton = document.querySelector("#render-button")!.getBoundingClientRect();
+    const stage = document.querySelector("#stage")!.getBoundingClientRect();
+    return {
+      scrollHeight: document.scrollingElement!.scrollHeight,
+      innerHeight,
+      widths: slots,
+      renderVisible: renderButton.bottom <= innerHeight,
+      stageVisible: stage.top >= 0 && stage.bottom <= innerHeight,
+    };
+  });
+  expect(layout.scrollHeight).toBeLessThanOrEqual(layout.innerHeight);
+  expect(Math.max(...layout.widths) - Math.min(...layout.widths)).toBeLessThan(1);
+  expect(layout.renderVisible).toBe(true);
+  expect(layout.stageVisible).toBe(true);
 });
 
 for (const preset of [

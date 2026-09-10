@@ -74,48 +74,21 @@ export class SpectrumCoverScene implements Scene {
     drawCover(ctx, this.assets.coverImage, coverX, coverY, coverSize, .96);
     const lineY = kind === "landscape" ? height * .82 : kind === "portrait" ? height * .77 : height * .79;
     const lineLeft = kind === "landscape" ? width * .62 : width * .1; const lineRight = kind === "landscape" ? width * .92 : width * .9;
-    const lineWidth = lineRight - lineLeft; const temporalBands = signal.spectrumBands;
-    const bars = Math.min(64, Math.max(1, temporalBands.length || frame.analysis.spectrum.length || 48));
-    // Both signals intentionally share one baseline and one narrow visual
-    // band. The spectral contour is the upper layer; the audio waveform
-    // passes through it, making their relationship legible instead of looking
-    // like two unrelated widgets placed beside one another.
-    const baseline = lineY + short * .012;
-    ctx.strokeStyle = "rgba(218,217,205,.38)"; ctx.lineWidth = Math.max(1, short / 330);
-    ctx.beginPath(); ctx.moveTo(lineLeft, baseline); ctx.lineTo(lineRight, baseline); ctx.stroke();
-
-    const spectrumValue = (index: number) => temporalBands.length
-      ? temporalBands[index % temporalBands.length] ?? 0
-      : frame.analysis.spectrum.length
-        ? frame.analysis.spectrum[index % frame.analysis.spectrum.length] ?? 0
-        : .25 + .2 * Math.sin(frame.time * 1.7 + index * .81);
-    // A quiet set of vertical stems retains the spectrum reading while the
-    // connected upper contour gives it a designed, waveform-like silhouette.
-    ctx.strokeStyle = "rgba(218,217,205,.25)"; ctx.lineWidth = Math.max(1, short / 430);
+    const lineWidth = lineRight - lineLeft; const temporalBands = signal.spectrumBands; const bars = Math.min(64, Math.max(1, temporalBands.length || frame.analysis.spectrum.length || 48));
+    ctx.strokeStyle = "rgba(218,217,205,.78)"; ctx.lineWidth = Math.max(1, short / 310);
+    ctx.beginPath(); ctx.moveTo(lineLeft, lineY); ctx.lineTo(lineRight, lineY); ctx.stroke();
     for (let index = 0; index < bars; index++) {
-      const value = clamp(spectrumValue(index) + .05 * Math.sin(frame.time * .9 + index * .43) + signal.beat * .09);
+      const value = temporalBands.length ? temporalBands[index % temporalBands.length] ?? 0 : frame.analysis.spectrum.length ? frame.analysis.spectrum[index % frame.analysis.spectrum.length] ?? 0 : .25 + .2 * Math.sin(frame.time * 1.7 + index * .81);
+      const moving = .08 * (0.5 + 0.5 * Math.sin(frame.time * .9 + index * .43));
+      const amplitude = lineWidth * .17 * clamp(value * .72 + moving + signal.beat * .18, .05, 1);
       const x = lineLeft + lineWidth * (index + .5) / bars;
-      const amplitude = short * (.055 + value * .17);
-      ctx.beginPath(); ctx.moveTo(x, baseline); ctx.lineTo(x, baseline - amplitude); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x, lineY - amplitude); ctx.lineTo(x, lineY + amplitude); ctx.stroke();
     }
-    ctx.beginPath();
-    for (let index = 0; index <= bars * 2; index++) {
-      const position = index / (bars * 2); const source = position * Math.max(0, bars - 1);
-      const left = Math.floor(source); const mix = source - left;
-      const value = spectrumValue(left) * (1 - mix) + spectrumValue(Math.min(bars - 1, left + 1)) * mix;
-      const x = lineLeft + lineWidth * position;
-      const y = baseline - short * (.065 + clamp(value + signal.beat * .12) * .19);
-      index ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-    }
-    ctx.strokeStyle = "rgba(239,236,222,.92)"; ctx.lineWidth = Math.max(1, short / 250); ctx.stroke();
-
-    // The lower waveform is deliberately larger than before, but remains
-    // translucent so the upper spectral line stays the visual focus.
-    ctx.strokeStyle = "rgba(154,167,188,.78)"; ctx.lineWidth = Math.max(1, short / 360); ctx.beginPath();
+    ctx.strokeStyle = "rgba(154,167,188,.82)"; ctx.lineWidth = Math.max(1, short / 420); ctx.beginPath();
     const points = Math.min(256, frame.analysis.waveform.length || 128);
     for (let index = 0; index < points; index++) {
       const value = frame.analysis.waveform.length ? waveformAt(frame, index + Math.floor(frame.time * 5)) : .5 + .25 * Math.sin(frame.time * 1.3 + index * .12);
-      const x = lineLeft + lineWidth * index / Math.max(1, points - 1); const y = baseline + (value - .5) * short * .11;
+      const x = lineLeft + lineWidth * index / Math.max(1, points - 1); const y = lineY + (value - .5) * short * .13;
       index ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
     }
     ctx.stroke();
