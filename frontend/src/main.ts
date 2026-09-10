@@ -156,6 +156,8 @@ app.innerHTML = `
 
 const canvas = document.querySelector<HTMLCanvasElement>("#preview-canvas")!;
 const context = canvas.getContext("2d")!;
+const stage = document.querySelector<HTMLDivElement>("#stage")!;
+const stageWrap = document.querySelector<HTMLDivElement>(".stage-wrap")!;
 const templatesElement = document.querySelector<HTMLDivElement>("#templates")!;
 const ratioSelect = document.querySelector<HTMLSelectElement>("#ratio-select")!;
 const resolutionSelect = document.querySelector<HTMLSelectElement>("#resolution-select")!;
@@ -166,6 +168,22 @@ const cancelButton = document.querySelector<HTMLButtonElement>("#cancel-button")
 const renderStatus = document.querySelector<HTMLSpanElement>("#render-status")!;
 const progressValue = document.querySelector<HTMLSpanElement>("#progress-value")!;
 const progressBar = document.querySelector<HTMLDivElement>("#progress-bar")!;
+
+function fitPreviewStage(): void {
+  const bounds = stageWrap.getBoundingClientRect();
+  if (bounds.width <= 0 || bounds.height <= 0) return;
+  const [ratioWidth, ratioHeight] = state.aspectRatio.split(":").map(Number);
+  const aspect = ratioWidth / ratioHeight;
+  const width = Math.min(bounds.width, bounds.height * aspect);
+  const height = width / aspect;
+  stage.style.width = `${Math.max(0, width)}px`;
+  stage.style.height = `${Math.max(0, height)}px`;
+}
+
+const stageResizeObserver = typeof ResizeObserver === "function"
+  ? new ResizeObserver(() => fitPreviewStage())
+  : null;
+stageResizeObserver?.observe(stageWrap);
 
 function renderTemplateCards(): void {
   templatesElement.innerHTML = TEMPLATES.map((template) => `
@@ -469,8 +487,8 @@ function updateOutputLabels(): void {
   const preset = currentPreset();
   document.querySelector("#dimensions-label")!.textContent = `${preset.width} × ${preset.height}`;
   document.querySelector("#preview-meta")!.textContent = `${state.aspectRatio} · ${preset.label} · ${state.frameRate}fps`;
-  const stage = document.querySelector<HTMLDivElement>("#stage")!;
   stage.dataset.ratio = state.aspectRatio;
+  fitPreviewStage();
   const scale = Math.min(960 / preset.width, 600 / preset.height);
   canvas.width = Math.round(preset.width * scale);
   canvas.height = Math.round(preset.height * scale);
@@ -705,7 +723,7 @@ drawPreview(0);
 let animationFrame = 0;
 function animate(now: number): void { drawPreview(now / 1000); animationFrame = requestAnimationFrame(animate); }
 animationFrame = requestAnimationFrame(animate);
-window.addEventListener("beforeunload", () => { cancelAnimationFrame(animationFrame); revokeCurrentOutputUrl(); });
+window.addEventListener("beforeunload", () => { cancelAnimationFrame(animationFrame); stageResizeObserver?.disconnect(); revokeCurrentOutputUrl(); });
 void projectService.reconcileInterruptedRenders().then(refreshProjects).catch((error) => {
   document.querySelector("#storage-usage")!.textContent = error instanceof Error ? error.message : "無法開啟本機資料庫";
 });

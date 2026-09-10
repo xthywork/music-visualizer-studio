@@ -155,6 +155,63 @@ test("fits the three-step workspace in a desktop viewport", async ({ page }) => 
   expect(layout.outputActionsInPreview).toBe(true);
 });
 
+test("contains the live preview canvas at the selected aspect ratio", async ({ page }) => {
+  const viewports = [
+    { width: 1920, height: 1080 },
+    { width: 1365, height: 768 },
+    { width: 1280, height: 720 },
+    { width: 1100, height: 700 },
+  ];
+  const ratios = [
+    { value: "16:9", aspect: 16 / 9 },
+    { value: "9:16", aspect: 9 / 16 },
+    { value: "1:1", aspect: 1 },
+  ];
+
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    for (const ratio of ratios) {
+      await page.locator("#ratio-select").selectOption(ratio.value);
+      const layout = await page.evaluate(() => {
+        const rect = (selector: string) => {
+          const element = document.querySelector<HTMLElement>(selector)!;
+          const box = element.getBoundingClientRect();
+          return { left: box.left, top: box.top, right: box.right, bottom: box.bottom, width: box.width, height: box.height };
+        };
+        const canvas = rect("#preview-canvas");
+        const stage = rect("#stage");
+        const wrap = rect(".stage-wrap");
+        const slots = [...document.querySelectorAll<HTMLElement>(".preview-slot")].map((element) => {
+          const box = element.getBoundingClientRect();
+          return { left: box.left, top: box.top, right: box.right, bottom: box.bottom, width: box.width, height: box.height };
+        });
+        return {
+          canvas,
+          stage,
+          wrap,
+          slots,
+          scrollWidth: document.scrollingElement!.scrollWidth,
+          scrollHeight: document.scrollingElement!.scrollHeight,
+          innerWidth,
+          innerHeight,
+        };
+      });
+      const epsilon = 1;
+      expect(Math.abs(layout.canvas.width / layout.canvas.height - ratio.aspect)).toBeLessThan(.01);
+      expect(Math.abs(layout.stage.width / layout.stage.height - ratio.aspect)).toBeLessThan(.01);
+      expect(Math.abs(layout.canvas.width - layout.stage.width)).toBeLessThan(epsilon);
+      expect(Math.abs(layout.canvas.height - layout.stage.height)).toBeLessThan(epsilon);
+      expect(layout.canvas.left).toBeGreaterThanOrEqual(layout.wrap.left - epsilon);
+      expect(layout.canvas.top).toBeGreaterThanOrEqual(layout.wrap.top - epsilon);
+      expect(layout.canvas.right).toBeLessThanOrEqual(layout.wrap.right + epsilon);
+      expect(layout.canvas.bottom).toBeLessThanOrEqual(layout.wrap.bottom + epsilon);
+      expect(Math.abs(layout.slots[0].height - layout.slots[1].height)).toBeLessThan(epsilon);
+      expect(layout.scrollWidth).toBeLessThanOrEqual(layout.innerWidth);
+      expect(layout.scrollHeight).toBeLessThanOrEqual(layout.innerHeight);
+    }
+  }
+});
+
 for (const preset of [
   { ratio: "16:9", option: "16-9-720p", width: 1280, height: 720 },
   { ratio: "9:16", option: "9-16-720p", width: 720, height: 1280 },
