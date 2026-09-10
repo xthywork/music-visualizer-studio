@@ -1,0 +1,128 @@
+import type { Scene, SceneFrameContext, TemplateId } from "./types";
+import { analysisAt } from "./audio-analysis";
+
+type DrawContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+export interface SceneAssets { coverImage?: ImageBitmap; backgroundImage?: ImageBitmap; }
+
+function drawAsset(ctx: DrawContext, image: ImageBitmap | undefined, width: number, height: number, alpha = 1) {
+  if (!image || typeof (ctx as any).drawImage !== "function") return;
+  ctx.save(); ctx.globalAlpha = alpha; (ctx as any).drawImage(image, 0, 0, width, height); ctx.restore();
+}
+function disposeAssets(assets: SceneAssets) { assets.coverImage?.close(); assets.backgroundImage?.close(); }
+
+function color(ctx: DrawContext, fill: string) { ctx.fillStyle = fill; }
+function fitText(ctx: DrawContext, value: string, max: number): string {
+  if (ctx.measureText(value).width <= max) return value;
+  let text = value;
+  while (text.length > 1 && ctx.measureText(`${text}…`).width > max) text = text.slice(0, -1);
+  return `${text}…`;
+}
+function background(ctx: DrawContext, width: number, height: number, first: string, second: string, angle = 0) {
+  const gradient = ctx.createLinearGradient(0, 0, width * Math.cos(angle), height * Math.sin(angle));
+  gradient.addColorStop(0, first); gradient.addColorStop(1, second); color(ctx, gradient as unknown as string); ctx.fillRect(0, 0, width, height);
+}
+
+export class SpectrumCoverScene implements Scene {
+  readonly id = "spectrum-cover" as const;
+  render(ctx: DrawContext, frame: SceneFrameContext) {
+    const { width, height } = frame; const signal = analysisAt(frame.analysis, frame.time);
+    background(ctx, width, height, "#120c2c", "#25145b", 0.35);
+    const cx = width / 2; const cy = height * 0.42; const radius = Math.min(width, height) * 0.25;
+    const glow = ctx.createRadialGradient(cx, cy, radius * 0.1, cx, cy, radius * 1.8);
+    glow.addColorStop(0, `rgba(118, 91, 255, ${0.38 + signal.beat * 0.2})`); glow.addColorStop(1, "rgba(30,10,70,0)");
+    color(ctx, glow as unknown as string); ctx.fillRect(0, 0, width, height);
+    ctx.beginPath(); ctx.arc(cx, cy, radius * (1 + signal.beat * 0.07), 0, Math.PI * 2); color(ctx, "rgba(8,7,25,.72)"); ctx.fill();
+    const bars = Math.min(64, frame.analysis.spectrum.length);
+    color(ctx, "#7cf7ff");
+    for (let i = 0; i < bars; i++) {
+      const v = frame.analysis.spectrum[i] ?? 0; const a = i / bars * Math.PI * 2;
+      const inner = radius * 1.08; const outer = inner + radius * (0.08 + v * 0.5 + signal.beat * 0.12);
+      ctx.lineWidth = Math.max(1, width / 320); ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner); ctx.lineTo(cx + Math.cos(a) * outer, cy + Math.sin(a) * outer); ctx.stroke();
+    }
+    ctx.lineWidth = Math.max(1, width / 240); ctx.beginPath();
+    const points = Math.min(512, frame.analysis.waveform.length);
+    for (let i = 0; i < points; i++) { const x = width * i / Math.max(1, points - 1); const y = height * 0.78 + (frame.analysis.waveform[i] ?? 0) * height * 0.09 * (i % 2 ? 1 : -1); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    color(ctx, "rgba(255,255,255,.78)"); ctx.stroke();
+    ctx.textAlign = "center"; ctx.fillStyle = "#fff"; ctx.font = `600 ${Math.max(14, Math.round(height * .042))}px system-ui, sans-serif`;
+    ctx.fillText(fitText(ctx, frame.analysis ? "" : "", width * .8), cx, height * .88);
+    // Text is set by the scene factory, keeping the scene itself serializable.
+  }
+}
+
+export class ConfiguredSpectrumCoverScene extends SpectrumCoverScene {
+  constructor(private readonly title = "", private readonly artist = "", private readonly assets: SceneAssets = {}) { super(); }
+  render(ctx: DrawContext, frame: SceneFrameContext) {
+    super.render(ctx, frame); const { width, height } = frame;
+    drawAsset(ctx, this.assets.backgroundImage, width, height, .22);
+    if (this.assets.coverImage) { ctx.save(); ctx.globalAlpha = .82; (ctx as any).drawImage(this.assets.coverImage, width * .25, height * .17, width * .5, width * .5); ctx.restore(); }
+    ctx.textAlign = "center"; ctx.fillStyle = "#fff"; ctx.font = `600 ${Math.max(14, Math.round(height * .042))}px system-ui, sans-serif`;
+    ctx.fillText(fitText(ctx, this.title, width * .8), width / 2, height * .86);
+    ctx.font = `400 ${Math.max(10, Math.round(height * .022))}px system-ui, sans-serif`; ctx.fillStyle = "rgba(255,255,255,.7)";
+    ctx.fillText(fitText(ctx, this.artist, width * .72), width / 2, height * .91);
+  }
+  dispose() { disposeAssets(this.assets); }
+}
+
+export class VinylParticleScene implements Scene {
+  readonly id = "vinyl-particle" as const;
+  constructor(private readonly assets: SceneAssets = {}) {}
+  render(ctx: DrawContext, frame: SceneFrameContext) {
+    const { width, height } = frame; const a = analysisAt(frame.analysis, frame.time); const cx = width / 2; const cy = height / 2;
+    background(ctx, width, height, "#060b14", "#172d36", 1.2);
+    drawAsset(ctx, this.assets.backgroundImage, width, height, .18);
+    const radius = Math.min(width, height) * (.28 + a.amplitude * .035 + a.beat * .04);
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(frame.time * .35); ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); color(ctx, "#0c0e13"); ctx.fill();
+    for (let i = 1; i < 7; i++) { ctx.beginPath(); ctx.arc(0, 0, radius * i / 7, 0, Math.PI * 2); ctx.strokeStyle = `rgba(120,140,150,${.12 + i * .015})`; ctx.lineWidth = 1; ctx.stroke(); }
+    ctx.beginPath(); ctx.arc(0, 0, radius * .12, 0, Math.PI * 2); color(ctx, "#e76058"); ctx.fill(); ctx.restore();
+    const count = 100;
+    for (let i = 0; i < count; i++) {
+      const angle = i * 2.399963 + frame.time * (.1 + (i % 5) * .008); const orbit = radius * (1.15 + (i * 17 % 100) / 100 * .8); const pulse = 1 + a.spectrum * .35 + a.beat * .5;
+      const x = cx + Math.cos(angle) * orbit * pulse; const y = cy + Math.sin(angle) * orbit * pulse;
+      ctx.beginPath(); ctx.arc(x, y, Math.max(1, width / 500 * (1 + i % 4 / 3)), 0, Math.PI * 2); ctx.fillStyle = `hsla(${175 + i % 80}, 85%, ${58 + i % 20}%, ${.35 + (i % 4) * .12})`; ctx.fill();
+    }
+  }
+  dispose() { disposeAssets(this.assets); }
+}
+
+export class AbstractPulseScene implements Scene {
+  readonly id = "abstract-pulse" as const;
+  constructor(private readonly assets: SceneAssets = {}) {}
+  render(ctx: DrawContext, frame: SceneFrameContext) {
+    const { width, height } = frame; const a = analysisAt(frame.analysis, frame.time); const cx = width / 2; const cy = height / 2;
+    background(ctx, width, height, "#03030b", "#181035", .7);
+    drawAsset(ctx, this.assets.backgroundImage, width, height, .2);
+    const rings = 7;
+    for (let ring = rings; ring > 0; ring--) {
+      const radius = Math.min(width, height) * (.05 + ring * .065 + a.amplitude * .05 + a.beat * .08);
+      ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.lineWidth = Math.max(1, width / 280); ctx.strokeStyle = `hsla(${245 + ring * 12}, 90%, ${50 + ring * 4}%, ${.12 + a.beat * .2})`; ctx.stroke();
+    }
+    ctx.beginPath(); const samples = Math.min(512, frame.analysis.waveform.length);
+    for (let i = 0; i < samples; i++) { const angle = i / samples * Math.PI * 2 + frame.time * .15; const r = Math.min(width, height) * (.2 + (frame.analysis.waveform[i] ?? 0) * .15 + a.beat * .1); const x = cx + Math.cos(angle) * r; const y = cy + Math.sin(angle) * r; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.closePath(); ctx.strokeStyle = "#ff6acb"; ctx.lineWidth = Math.max(1, width / 220); ctx.stroke();
+  }
+  dispose() { disposeAssets(this.assets); }
+}
+
+export function createScene(id: TemplateId, config: { title?: string; artist?: string } = {}): Scene {
+  if (id === "spectrum-cover") return new ConfiguredSpectrumCoverScene(config.title, config.artist);
+  if (id === "vinyl-particle") return new VinylParticleScene();
+  return new AbstractPulseScene();
+}
+
+async function decodeImageAsset(source: string | undefined): Promise<ImageBitmap | undefined> {
+  if (!source || typeof fetch !== "function" || typeof createImageBitmap !== "function") return undefined;
+  try { return await createImageBitmap(await (await fetch(source)).blob()); } catch { return undefined; }
+}
+
+/** Optional image treatment without changing the worker message protocol; assets remain transient. */
+export async function createSceneAsync(id: TemplateId, config: { title?: string; artist?: string; coverImage?: string; backgroundImage?: string } = {}): Promise<Scene> {
+  const [coverImage, backgroundImage] = await Promise.all([decodeImageAsset(config.coverImage), decodeImageAsset(config.backgroundImage)]);
+  const assets = { coverImage, backgroundImage };
+  if (id === "spectrum-cover") return new ConfiguredSpectrumCoverScene(config.title, config.artist, assets);
+  if (id === "vinyl-particle") return new VinylParticleScene(assets);
+  return new AbstractPulseScene(assets);
+}
+
+export function disposeScene(scene: Scene) { scene.dispose?.(); }
+
+export const TEMPLATE_IDS: readonly TemplateId[] = ["spectrum-cover", "vinyl-particle", "abstract-pulse"];

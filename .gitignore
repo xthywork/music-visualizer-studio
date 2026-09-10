@@ -9,6 +9,8 @@ __pycache__/
 node_modules/
 dist/
 build/
+test-results/
+playwright-report/
 
 # Local environment and editor files
 .env
@@ -20,4 +22,3 @@ build/
 
 # Agent/runtime-local files
 .agents/
-

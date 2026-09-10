@@ -20,7 +20,7 @@ The first release is designed for personal and internal use. The boundaries betw
 - Audio input: MP3, WAV, and M4A, initially limited to 10 minutes per track
 - Cover/background image, title, and artist fields
 - Browser-first rendering in a Web Worker, with GPU or hardware encoding when available
-- MP4 output retained in the browser's local storage for later download
+- MP4 output retained in browser-local IndexedDB for later preview/download
 - Audio is used for rendering but is not retained
 - Desktop Chrome and Edge are the primary supported browsers for the MVP
 
@@ -28,7 +28,7 @@ The first release is designed for personal and internal use. The boundaries betw
 
 - Ubuntu Server 24.04
 - Python backend using a `uv`-managed virtual environment
-- FastAPI backend (planned)
+- FastAPI backend serving the built frontend and health endpoints
 - Service bind address: `0.0.0.0:34388`
 
 From another machine, use `http://<server-ip>:34388`. `0.0.0.0` is a server bind address, not normally the address entered in a browser.
@@ -37,21 +37,64 @@ The server does not require a GPU for the MVP because rendering is performed in 
 
 ## Local development
 
-The implementation is not yet started. Once the application scaffold is added, the expected backend setup will be:
+Install the locked backend environment with `uv`:
 
 ```bash
-uv venv
-source .venv/bin/activate
-uv sync
+uv sync --frozen
 ```
 
-The development service should listen on:
+Install and build the TypeScript frontend:
 
-```text
-http://0.0.0.0:34388
+```bash
+cd frontend
+npm ci
+npm run build
+cd ..
 ```
 
-See [docs/development.md](docs/development.md) for conventions and the planned local workflow.
+Start the FastAPI service (which serves `frontend/dist`):
+
+```bash
+uv run music-visualizer
+```
+
+It listens on `0.0.0.0:34388` by default. Use `http://127.0.0.1:34388` locally
+or `http://<server-ip>:34388` from a trusted machine. `VISUALIZER_HOST` and
+`VISUALIZER_PORT` can override the defaults. For frontend-only hot reload:
+
+```bash
+cd frontend
+npm run dev
+```
+
+See [docs/development.md](docs/development.md) for browser codec strategy and
+the validated Chrome/Edge matrix, and [docs/deployment.md](docs/deployment.md)
+for Ubuntu Server deployment.
+
+## Tests
+
+Backend checks:
+
+```bash
+uv sync --frozen
+uv run pytest tests/backend
+```
+
+Frontend unit tests, type-check, and production build:
+
+```bash
+cd frontend
+npm ci
+npm test
+npm run build
+```
+
+Optional Playwright browser checks:
+
+```bash
+npx playwright install chromium
+npm run test:e2e
+```
 
 ## Architecture at a glance
 
@@ -71,11 +114,27 @@ FastAPI server
 
 See [docs/architecture.md](docs/architecture.md) for the design rationale and the future server-rendering boundary.
 
-## Privacy and data lifecycle
+## Privacy and MVP limitations
 
-Audio files are not uploaded or retained by the application design. Project settings and generated MP4 files are stored locally in the browser and can be deleted by the user. Clearing site data, using private browsing, or exceeding browser storage quota can remove local projects.
+Source audio is decoded in memory for the active render only. It is never sent
+to FastAPI, written to the server filesystem, or included in project storage;
+the browser releases it after completion, cancellation, or failure. Project
+metadata, render history, and generated MP4 Blobs remain local to the browser.
+Users can delete an output while keeping its project configuration, or delete a
+project completely. Browser eviction, cleared site data, private browsing, or
+quota limits can remove local projects and outputs, so local storage is not a
+backup.
 
-See [docs/storage-and-privacy.md](docs/storage-and-privacy.md).
+Rendering is capability-gated and device-dependent. A successful preflight
+does not guarantee real-time performance for long videos or 4K60: available
+RAM, browser limits, local storage, and device performance still apply. The
+MVP has no accounts, cloud sync, public sharing, authentication, or server-side
+render fallback. H.264/AAC is preferred for broad playback compatibility, with
+additional browser codec fallbacks documented in
+[docs/development.md](docs/development.md).
+
+See [docs/storage-and-privacy.md](docs/storage-and-privacy.md) for the full
+local-data lifecycle.
 
 ## Documentation
 
@@ -87,5 +146,6 @@ See [docs/storage-and-privacy.md](docs/storage-and-privacy.md).
 
 ## Project status
 
-This repository currently contains the product and technical planning baseline. Feature implementation will be tracked through OpenSpec changes before code is added.
-
+The MVP implementation is complete. Future work may add authenticated SaaS
+accounts, cloud synchronization, sharing, and a server-side CPU/GPU rendering
+fallback without changing the browser template configuration boundary.
