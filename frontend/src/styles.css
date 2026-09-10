@@ -51,7 +51,7 @@ body::before {
 .layout { display: grid; grid-template-columns: minmax(520px, 1fr) minmax(420px, 1.18fr); gap: clamp(14px, 1.8vw, 22px); width: 100%; height: 100%; min-height: 0; align-items: stretch; }
 .panel { border: 1px solid var(--line); border-radius: 22px; background: var(--panel); box-shadow: 0 22px 70px rgba(0,0,0,.25); overflow: hidden; }
 .control-panel { min-height: 0; }
-.panel-body { height: 100%; min-height: 0; padding: clamp(15px, 2vw, 22px); overflow: hidden; }
+.panel-body { height: 100%; min-height: 0; padding: clamp(15px, 2vw, 22px); overflow: hidden; display: flex; flex-direction: column; }
 .section + .section { margin-top: clamp(13px, 2vh, 22px); padding-top: clamp(13px, 2vh, 20px); border-top: 1px solid var(--line); }
 .section-title { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 13px; }
 .section-title h2 { margin: 0; font: 600 1rem "Space Grotesk"; }
@@ -79,6 +79,7 @@ body::before {
 .dropzone strong { font-size: .74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dropzone small { color: var(--muted); margin-top: 0; font-size: .65rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .file-status { min-height: 18px; margin: 7px 2px 0; color: var(--muted); font-size: .69rem; line-height: 1.35; overflow-wrap: anywhere; }
+.audio-slot .file-status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .file-status.error { color: var(--danger); }
 .file-status.success { color: var(--mint); }
 
@@ -111,13 +112,16 @@ body::before {
 .preview-panel { position: relative; min-width: 0; min-height: 0; height: 100%; display: flex; flex-direction: column; }
 .preview-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: .78rem; }
 .capability { color: #ffc875; }
-.stage-wrap { flex: 1 1 auto; min-height: 0; display: grid; place-items: center; padding: clamp(10px, 2vh, 22px) clamp(16px, 2.6vw, 28px); background: #05070c; overflow: hidden; }
-.stage { position: relative; display: grid; place-items: center; width: min(92%, 620px); height: auto; max-width: 100%; max-height: 100%; margin: 0 auto; aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; background: #090c16; }
+.preview-stack { flex: 1 1 auto; min-height: 0; display: grid; grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 10px clamp(12px, 2vw, 20px); background: #05070c; overflow: hidden; }
+.preview-slot { position: relative; min-height: 0; display: grid; place-items: center; overflow: hidden; border: 1px solid rgba(255,255,255,.075); border-radius: 14px; background: rgba(9,12,22,.82); }
+.stage-wrap { width: 100%; height: 100%; min-height: 0; display: grid; place-items: center; padding: 0; background: transparent; overflow: hidden; }
+.stage { position: relative; display: grid; place-items: center; width: 100%; height: auto; max-width: 100%; max-height: 100%; margin: 0 auto; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: #090c16; }
 .stage[data-ratio="9:16"] { aspect-ratio: 9 / 16; width: auto; height: min(100%, 520px); margin: 0 auto; }
 .stage[data-ratio="1:1"] { aspect-ratio: 1; width: auto; height: min(100%, 520px); margin: 0 auto; }
 #preview-canvas { width: 100%; height: 100%; display: block; }
 .stage-overlay { position: absolute; inset: auto 16px 14px; display: flex; justify-content: space-between; align-items: center; pointer-events: none; font-size: .72rem; color: rgba(255,255,255,.62); }
-.render-controls { flex: 0 0 auto; min-height: 0; padding: clamp(12px, 1.5vh, 18px); }
+.render-controls { flex: 0 0 auto; min-height: 0; padding: clamp(6px, 1vh, 10px) 0 0; margin-top: auto; }
+.render-controls .actions { margin-top: 8px; }
 .status-row { display: flex; justify-content: space-between; color: var(--muted); font-size: .78rem; margin-bottom: 9px; }
 .progress-track { height: 6px; background: rgba(255,255,255,.07); border-radius: 99px; overflow: hidden; }
 .progress-bar { width: 0%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--mint), var(--purple)); transition: width .18s; }
@@ -127,11 +131,26 @@ body::before {
 .primary:disabled { cursor: not-allowed; filter: grayscale(.8); opacity: .48; }
 .secondary { border: 1px solid var(--line); color: #f7f7fb; background: transparent; }
 .secondary[hidden] { display: none; }
-.output-actions { display: flex; gap: 8px; margin-top: 12px; }
+.preview-output-actions { flex: 0 0 auto; min-height: 66px; padding: 10px clamp(12px, 2vw, 20px) 14px; }
+.output-actions { display: flex; gap: 8px; margin-top: 0; }
 .output-actions[hidden] { display: none; }
 .output-actions a, .output-actions button { flex: 1; border: 1px solid rgba(100,240,208,.25); border-radius: 10px; padding: 10px; background: rgba(100,240,208,.08); color: var(--mint); text-align: center; text-decoration: none; }
-.output-preview { display: block; width: min(100%, 560px); max-height: min(24vh, 230px); margin: 12px auto 0; border-radius: 12px; background: #030409; object-fit: contain; }
+.video-placeholder { display: grid; place-items: center; gap: 5px; color: rgba(230,233,242,.75); text-align: center; }
+.video-placeholder strong { font-size: .82rem; font-weight: 600; }
+.video-placeholder small { color: var(--muted); font-size: .68rem; }
+.video-placeholder-icon { display: grid; place-items: center; width: 38px; height: 38px; border: 1px solid rgba(100,240,208,.2); border-radius: 50%; color: var(--mint); background: rgba(100,240,208,.06); font-size: .76rem; }
+.video-placeholder[hidden] { display: none; }
+.output-preview { display: block; width: 100%; height: 100%; max-width: 100%; max-height: 100%; margin: 0; border-radius: 12px; background: #030409; object-fit: contain; }
+.video-preview-slot .output-preview { min-width: 0; min-height: 0; align-self: stretch; justify-self: stretch; }
 .output-preview[hidden] { display: none; }
+
+@media (min-width: 1001px) {
+  .control-panel .render-controls { padding-top: 5px; }
+  .control-panel .status-row { margin-bottom: 4px; font-size: .7rem; }
+  .control-panel .progress-track { height: 4px; }
+  .control-panel .actions { margin-top: 5px; }
+  .control-panel .primary, .control-panel .secondary { padding: 8px 12px; }
+}
 
 @media (max-width: 1000px) {
   body { overflow: auto; }
@@ -141,7 +160,7 @@ body::before {
   .layout { grid-template-columns: 1fr; height: auto; }
   .control-panel .panel-body { height: auto; overflow: visible; }
   .preview-panel { position: static; height: auto; min-height: 560px; }
-  .stage-wrap { min-height: 350px; }
+  .preview-stack { min-height: 500px; }
 }
 
 @media (max-width: 560px) {

@@ -129,16 +129,25 @@ app.innerHTML = `
               </div>
             </div>
           </div>
-        </div></section>
-        <section class="panel preview-panel">
-          <div class="preview-head"><span>輸出預覽</span><span class="capability" id="capability">正在檢查編碼能力…</span></div>
-          <div class="stage-wrap"><div class="stage" id="stage" data-ratio="16:9"><canvas id="preview-canvas" width="960" height="540"></canvas><div class="stage-overlay"><span>PREVIEW</span><span id="preview-meta">16:9 · 1080p · 30fps</span></div></div></div>
           <div class="render-controls">
             <div class="status-row"><span id="render-status">選擇音訊後即可生成</span><span id="progress-value">0%</span></div>
             <div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div>
             <div class="actions"><button class="primary" id="render-button" disabled>生成 MP4</button><button class="secondary" id="cancel-button" hidden>取消</button></div>
+          </div>
+        </div></section>
+        <section class="panel preview-panel">
+          <div class="preview-head"><span>輸出預覽</span><span class="capability" id="capability">正在檢查編碼能力…</span></div>
+          <div class="preview-stack">
+            <div class="preview-slot live-preview-slot">
+              <div class="stage-wrap"><div class="stage" id="stage" data-ratio="16:9"><canvas id="preview-canvas" width="960" height="540"></canvas><div class="stage-overlay"><span>PREVIEW</span><span id="preview-meta">16:9 · 1080p · 30fps</span></div></div></div>
+            </div>
+            <div class="preview-slot video-preview-slot">
+              <div class="video-placeholder" id="video-placeholder"><span class="video-placeholder-icon">▶</span><strong>影片預覽</strong><small>生成 MP4 後會顯示在這裡</small></div>
+              <video class="output-preview" id="output-preview" controls playsinline hidden></video>
+            </div>
+          </div>
+          <div class="preview-output-actions">
             <div class="output-actions" id="output-actions" hidden><a id="download-link" download="music-visualizer.mp4">下載 MP4</a><button id="delete-output">刪除輸出</button></div>
-            <video class="output-preview" id="output-preview" controls playsinline hidden></video>
           </div>
         </section>
       </div>
@@ -281,10 +290,11 @@ async function showLatestOutput(project: ProjectRecord): Promise<void> {
   const stored = await projectService.getOutput(project.id, latest.id);
   if (!stored) { clearOutputPreview(); actions.hidden = true; document.querySelector("#render-status")!.textContent = "本機 MP4 已不存在；請重新上傳音訊生成。"; return; }
   const link = document.querySelector<HTMLAnchorElement>("#download-link")!;
+  const placeholder = document.querySelector<HTMLDivElement>("#video-placeholder")!;
   revokeCurrentOutputUrl();
   currentOutputUrl = URL.createObjectURL(stored.blob);
   link.href = currentOutputUrl; link.download = `${safeFileName(project.name)}.mp4`;
-  video.src = currentOutputUrl; video.hidden = false;
+  video.src = currentOutputUrl; video.hidden = false; placeholder.hidden = true;
   actions.dataset.renderId = latest.id; actions.hidden = false;
   document.querySelector("#render-status")!.textContent = "本機 MP4 可預覽與下載";
 }
@@ -297,7 +307,8 @@ function revokeCurrentOutputUrl(): void {
 function clearOutputPreview(): void {
   revokeCurrentOutputUrl();
   const video = document.querySelector<HTMLVideoElement>("#output-preview")!;
-  video.pause(); video.removeAttribute("src"); video.load(); video.hidden = true;
+  const placeholder = document.querySelector<HTMLDivElement>("#video-placeholder")!;
+  video.pause(); video.removeAttribute("src"); video.load(); video.hidden = true; placeholder.hidden = false;
   document.querySelector<HTMLAnchorElement>("#download-link")!.removeAttribute("href");
 }
 

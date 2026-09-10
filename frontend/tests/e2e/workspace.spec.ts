@@ -125,22 +125,34 @@ test("fits the three-step workspace in a desktop viewport", async ({ page }) => 
   ]);
   await expect(page.locator("#templates")).toBeVisible();
   await expect(page.locator(".output-settings")).toBeVisible();
+  await expect(page.locator(".preview-slot")).toHaveCount(2);
+  await expect(page.locator("#video-placeholder")).toBeVisible();
   const layout = await page.evaluate(() => {
     const slots = [...document.querySelectorAll(".media-slot")].map((element) => element.getBoundingClientRect().width);
+    const previewSlots = [...document.querySelectorAll(".preview-slot")].map((element) => element.getBoundingClientRect());
     const renderButton = document.querySelector("#render-button")!.getBoundingClientRect();
     const stage = document.querySelector("#stage")!.getBoundingClientRect();
+    const controlPanel = document.querySelector(".control-panel")!.getBoundingClientRect();
+    const previewPanel = document.querySelector(".preview-panel")!.getBoundingClientRect();
+    const outputActions = document.querySelector(".preview-output-actions")!.getBoundingClientRect();
     return {
       scrollHeight: document.scrollingElement!.scrollHeight,
       innerHeight,
       widths: slots,
+      previewSlotHeights: previewSlots.map((slot) => slot.height),
       renderVisible: renderButton.bottom <= innerHeight,
       stageVisible: stage.top >= 0 && stage.bottom <= innerHeight,
+      renderInControls: renderButton.left >= controlPanel.left && renderButton.right <= controlPanel.right,
+      outputActionsInPreview: outputActions.left >= previewPanel.left && outputActions.right <= previewPanel.right,
     };
   });
   expect(layout.scrollHeight).toBeLessThanOrEqual(layout.innerHeight);
   expect(Math.max(...layout.widths) - Math.min(...layout.widths)).toBeLessThan(1);
+  expect(Math.abs(layout.previewSlotHeights[0] - layout.previewSlotHeights[1])).toBeLessThan(1);
   expect(layout.renderVisible).toBe(true);
   expect(layout.stageVisible).toBe(true);
+  expect(layout.renderInControls).toBe(true);
+  expect(layout.outputActionsInPreview).toBe(true);
 });
 
 for (const preset of [
