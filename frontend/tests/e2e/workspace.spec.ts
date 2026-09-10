@@ -29,18 +29,25 @@ test.beforeEach(async ({ page }) => {
 
 test("renders, stores, reopens, and downloads a local MP4", async ({ page }, testInfo) => {
   await expect(page.locator(".topbar")).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "1. 歌曲資訊" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "1. 歌曲與素材" })).toBeVisible();
+  await expect(page.locator("#audio-placeholder")).toBeVisible();
+  await expect(page.locator("#audio-note")).toBeHidden();
   await page.locator("#ratio-select").selectOption("1:1");
   await page.locator("#resolution-select").selectOption("1-1-720p");
   await page.locator("#title-input").fill("E2E Signal");
   await page.locator("#audio-input").setInputFiles({ name: "signal.wav", mimeType: "audio/wav", buffer: wavFixture() });
   await expect(page.locator("#file-status")).toContainText("signal.wav");
+  await expect(page.locator("#audio-note")).toBeVisible();
+  await expect(page.locator("#audio-placeholder")).toBeHidden();
+  await expect(page.locator("#audio-drop-title")).toHaveText("signal.wav");
 
   const generate = page.getByRole("button", { name: "生成 MP4" });
   await expect(generate).toBeEnabled();
   await generate.click();
   await expect(page.locator("#output-actions")).toBeVisible({ timeout: 120_000 });
   await expect(page.locator("#output-preview")).toBeVisible();
+  await expect(page.locator("#audio-placeholder")).toBeVisible();
+  await expect(page.locator("#audio-note")).toBeHidden();
   const fittedOutput = await page.evaluate(() => {
     const video = document.querySelector("#output-preview")!.getBoundingClientRect();
     return document.scrollingElement!.scrollHeight <= innerHeight && video.bottom <= innerHeight;
@@ -101,6 +108,8 @@ test("accepts audio and artwork by drag and drop", async ({ page }) => {
 
   await expect(page.locator("#file-status")).toContainText("dropped.wav");
   await expect(page.locator("#render-button")).toBeEnabled();
+  await expect(page.locator("#audio-note")).toBeVisible();
+  await expect(page.locator("#audio-placeholder")).toBeHidden();
   await expect(page.locator("#cover-name")).toHaveText("cover.png");
   await expect(page.locator("#background-name")).toHaveText("background.png");
   await expect(page.locator("#cover-preview-image")).toBeVisible();
@@ -110,10 +119,12 @@ test("accepts audio and artwork by drag and drop", async ({ page }) => {
 test("fits the three-step workspace in a desktop viewport", async ({ page }) => {
   await page.setViewportSize({ width: 1365, height: 768 });
   await expect(page.locator(".section-title h2")).toHaveText([
-    "1. 歌曲資訊",
-    "2. 選擇素材",
-    "3. 動畫與輸出設定",
+    "1. 歌曲與素材",
+    "2. 動畫設定",
+    "3. 輸出設定",
   ]);
+  await expect(page.locator("#templates")).toBeVisible();
+  await expect(page.locator(".output-settings")).toBeVisible();
   const layout = await page.evaluate(() => {
     const slots = [...document.querySelectorAll(".media-slot")].map((element) => element.getBoundingClientRect().width);
     const renderButton = document.querySelector("#render-button")!.getBoundingClientRect();
@@ -193,5 +204,7 @@ test("keeps the interface responsive and cancels a worker render without output"
 test("rejects an unsupported audio format", async ({ page }) => {
   await page.locator("#audio-input").setInputFiles({ name: "signal.flac", mimeType: "audio/flac", buffer: Buffer.from("not-audio") });
   await expect(page.locator("#file-status")).toContainText("僅支援 MP3、WAV 或 M4A");
+  await expect(page.locator("#audio-placeholder")).toBeVisible();
+  await expect(page.locator("#audio-note")).toBeHidden();
   await expect(page.getByRole("button", { name: "生成 MP4" })).toBeDisabled();
 });

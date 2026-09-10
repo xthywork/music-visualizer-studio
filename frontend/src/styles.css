@@ -56,7 +56,7 @@ body::before {
 .section-title { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 13px; }
 .section-title h2 { margin: 0; font: 600 1rem "Space Grotesk"; }
 .section-title span { color: var(--muted); font-size: .74rem; }
-.song-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.song-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: clamp(10px, 1.4vh, 15px); }
 .media-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(8px, 1vw, 14px); align-items: start; }
 .media-slot { min-width: 0; }
 .media-label { display: block; margin-bottom: 7px; color: #dfe1e8; font-size: .74rem; font-weight: 600; }
@@ -65,14 +65,19 @@ body::before {
 .subsection-title { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 9px; color: #dfe1e8; font-size: .78rem; }
 .subsection-title span { color: var(--muted); font-size: .68rem; font-weight: 400; }
 
-.dropzone { display: block; min-height: 72px; padding: 8px 10px; border: 1px dashed rgba(255,255,255,.2); border-radius: 13px; background: rgba(255,255,255,.025); text-align: center; transition: .2s; cursor: pointer; }
+.dropzone { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 72px; padding: 8px 10px; border: 1px dashed rgba(255,255,255,.2); border-radius: 13px; background: rgba(255,255,255,.025); text-align: left; transition: .2s; cursor: pointer; }
 .dropzone:hover { border-color: var(--mint); background: rgba(100,240,208,.04); }
 .dropzone.dragging, .image-dropzone.dragging { border-color: var(--mint); background: rgba(100,240,208,.09); box-shadow: 0 0 0 3px rgba(100,240,208,.08); }
 .dropzone input { position: absolute; opacity: 0; pointer-events: none; }
-.upload-icon { display: inline-grid; place-items: center; width: 25px; height: 25px; border-radius: 50%; margin-bottom: 3px; background: rgba(100,240,208,.1); color: var(--mint); font-size: .9rem; }
+.audio-preview { flex: 0 0 54px; width: 54px; height: 54px; display: grid; place-items: center; border-radius: 8px; border: 1px solid rgba(255,255,255,.1); background: linear-gradient(135deg, rgba(100,240,208,.14), rgba(155,140,255,.16)); color: var(--mint); }
+.audio-placeholder, .audio-note { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: rgba(100,240,208,.1); font-size: 1.05rem; line-height: 1; }
+.audio-placeholder[hidden], .audio-note[hidden] { display: none; }
+.audio-note { color: var(--mint); font-size: 1.25rem; }
+.audio-placeholder { color: var(--muted); font-size: 1.35rem; }
+.audio-drop-copy { min-width: 0; display: grid; gap: 4px; }
 .dropzone strong, .dropzone small { display: block; }
-.dropzone strong { font-size: .74rem; }
-.dropzone small { color: var(--muted); margin-top: 3px; font-size: .65rem; }
+.dropzone strong { font-size: .74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dropzone small { color: var(--muted); margin-top: 0; font-size: .65rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .file-status { min-height: 18px; margin: 7px 2px 0; color: var(--muted); font-size: .69rem; line-height: 1.35; overflow-wrap: anywhere; }
 .file-status.error { color: var(--danger); }
 .file-status.success { color: var(--mint); }

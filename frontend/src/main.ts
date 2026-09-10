@@ -88,18 +88,15 @@ app.innerHTML = `
       <div class="layout">
         <section class="panel control-panel"><div class="panel-body">
           <div class="section">
-            <div class="section-title"><h2>1. 歌曲資訊</h2><span>即時預覽</span></div>
+            <div class="section-title"><h2>1. 歌曲與素材</h2><span>即時預覽</span></div>
             <div class="fields song-fields">
               <label class="field">歌名<input id="title-input" value="${state.title}" maxlength="80" /></label>
               <label class="field">藝人<input id="artist-input" value="${state.artist}" maxlength="80" /></label>
             </div>
-          </div>
-          <div class="section">
-            <div class="section-title"><h2>2. 選擇素材</h2><span>音訊與圖片</span></div>
             <div class="media-grid">
               <div class="media-slot audio-slot">
                 <span class="media-label">音訊</span>
-                <label class="dropzone" id="audio-dropzone"><input id="audio-input" type="file" accept=".mp3,.wav,.m4a,audio/mpeg,audio/wav,audio/mp4" /><span class="upload-icon">♪</span><strong>拖曳或點擊選擇</strong><small>MP3 · WAV · M4A</small></label>
+                <label class="dropzone" id="audio-dropzone"><input id="audio-input" type="file" accept=".mp3,.wav,.m4a,audio/mpeg,audio/wav,audio/mp4" /><span class="audio-preview" id="audio-preview"><span class="audio-placeholder" id="audio-placeholder">＋</span><span class="audio-note" id="audio-note" hidden>♪</span></span><span class="audio-drop-copy"><strong id="audio-drop-title">拖曳或點擊選擇</strong><small id="audio-drop-meta">MP3 · WAV · M4A</small></span></label>
                 <p class="file-status" id="file-status">尚未選擇音訊</p>
               </div>
               <div class="media-slot image-field">
@@ -115,20 +112,20 @@ app.innerHTML = `
             </div>
           </div>
           <div class="section">
-            <div class="section-title"><h2>3. 動畫與輸出設定</h2><span>瀏覽器處理</span></div>
-            <div class="settings-grid">
-              <div class="setting-block">
-                <div class="subsection-title"><strong>動畫模板</strong><span>2 個模板</span></div>
-                <div class="templates" id="templates"></div>
-              </div>
-              <div class="setting-block output-settings">
-                <div class="subsection-title"><strong>輸出設定</strong><span id="dimensions-label">1920 × 1080</span></div>
-                <div class="fields">
-                  <label class="field">比例<select id="ratio-select"></select></label>
-                  <label class="field">解析度<select id="resolution-select"></select></label>
-                  <label class="field">影格率<select id="fps-select"></select></label>
-                  <label class="field">渲染模式<select disabled><option>自動（瀏覽器優先）</option></select></label>
-                </div>
+            <div class="section-title"><h2>2. 動畫設定</h2><span>選擇視覺風格</span></div>
+            <div class="setting-block">
+              <div class="templates" id="templates"></div>
+            </div>
+          </div>
+          <div class="section">
+            <div class="section-title"><h2>3. 輸出設定</h2><span>瀏覽器處理</span></div>
+            <div class="setting-block output-settings">
+              <div class="subsection-title"><strong>輸出規格</strong><span id="dimensions-label">1920 × 1080</span></div>
+              <div class="fields">
+                <label class="field">比例<select id="ratio-select"></select></label>
+                <label class="field">解析度<select id="resolution-select"></select></label>
+                <label class="field">影格率<select id="fps-select"></select></label>
+                <label class="field">渲染模式<select disabled><option>自動（瀏覽器優先）</option></select></label>
               </div>
             </div>
           </div>
@@ -270,6 +267,7 @@ async function openProject(projectId: string): Promise<void> {
   document.querySelector<HTMLInputElement>("#title-input")!.value = state.title;
   document.querySelector<HTMLInputElement>("#artist-input")!.value = state.artist;
   renderButton.disabled = true;
+  updateAudioPicker(null);
   setFileStatus("重新生成前請再次選擇原始音訊。");
   renderTemplateCards(); populateOutputControls(); updateOutputLabels();
   await showLatestOutput(project);
@@ -307,6 +305,7 @@ function resetDraft(): void {
   currentProjectId = null; state.templateId = "spectrum-cover"; state.aspectRatio = "16:9"; state.presetId = "16-9-1080p"; state.frameRate = 30;
   state.title = "Midnight Signal"; state.artist = "Your Artist"; state.audioFile = null; state.duration = null; state.coverUrl = null; state.backgroundUrl = null;
   document.querySelector<HTMLInputElement>("#audio-input")!.value = "";
+  updateAudioPicker(null);
   previewAssets.cover = null; previewAssets.background = null;
   updateImagePicker("coverUrl", null);
   updateImagePicker("backgroundUrl", null);
@@ -443,6 +442,7 @@ async function finishRenderSession(message: string, completed: boolean): Promise
   state.audioFile = null;
   state.duration = null;
   document.querySelector<HTMLInputElement>("#audio-input")!.value = "";
+  updateAudioPicker(null);
   cancelButton.hidden = true;
   renderButton.disabled = true;
   setRenderProgress(completed ? 1 : 0, message);
@@ -507,9 +507,29 @@ function setFileStatus(message: string, kind = ""): void {
   element.textContent = message; element.className = `file-status ${kind}`;
 }
 
+function updateAudioPicker(file: File | null): void {
+  const placeholder = document.querySelector<HTMLSpanElement>("#audio-placeholder");
+  const note = document.querySelector<HTMLSpanElement>("#audio-note");
+  const title = document.querySelector<HTMLElement>("#audio-drop-title");
+  const meta = document.querySelector<HTMLElement>("#audio-drop-meta");
+  if (!placeholder || !note || !title || !meta) return;
+  if (file) {
+    placeholder.hidden = true;
+    note.hidden = false;
+    title.textContent = file.name;
+    const format = file.type.split("/").at(-1)?.toUpperCase() || file.name.split(".").at(-1)?.toUpperCase() || "AUDIO";
+    meta.textContent = `${format} · ${formatBytes(file.size)}`;
+  } else {
+    placeholder.hidden = false;
+    note.hidden = true;
+    title.textContent = "拖曳或點擊選擇";
+    meta.textContent = "MP3 · WAV · M4A";
+  }
+}
+
 async function inspectAudio(file: File): Promise<void> {
   const problem = validateAudioFile(file);
-  if (problem) { state.audioFile = null; renderButton.disabled = true; setFileStatus(problem, "error"); return; }
+  if (problem) { state.audioFile = null; state.duration = null; renderButton.disabled = true; updateAudioPicker(null); setFileStatus(problem, "error"); return; }
   const url = URL.createObjectURL(file);
   const audio = new Audio(); audio.preload = "metadata"; audio.src = url;
   try {
@@ -520,12 +540,13 @@ async function inspectAudio(file: File): Promise<void> {
     const durationProblem = validateAudioDuration(duration);
     if (durationProblem) throw new Error(durationProblem);
     state.audioFile = file; state.duration = duration;
+    updateAudioPicker(file);
     renderButton.disabled = false;
     setFileStatus(`${file.name} · ${formatBytes(file.size)} · ${Math.floor(duration / 60)}:${String(Math.round(duration % 60)).padStart(2, "0")}`, "success");
     await refreshCapability();
     scheduleProjectSave();
   } catch (error) {
-    state.audioFile = null; state.duration = null; renderButton.disabled = true;
+    state.audioFile = null; state.duration = null; renderButton.disabled = true; updateAudioPicker(null);
     setFileStatus(error instanceof Error ? error.message : "無法讀取音訊。", "error");
   } finally { URL.revokeObjectURL(url); audio.removeAttribute("src"); audio.load(); }
 }
