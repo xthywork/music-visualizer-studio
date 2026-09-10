@@ -57,7 +57,10 @@ A project record includes:
 - Render status and error information
 - Generated MP4 metadata and local reference
 
-The original audio file is never part of a persisted project record.
+The original audio bytes and absolute path are never part of a persisted project
+record. The record may retain sanitized source metadata, while supported
+browsers may store a permission-controlled File System Access handle in a
+separate IndexedDB store so the user can reconnect the original file.
 
 ## Non-goals for the MVP
 
@@ -67,4 +70,3 @@ The original audio file is never part of a persisted project record.
 - Word-level lyric animation
 - More aspect ratios than 16:9, 9:16, and 1:1
 - Guaranteed 4K60 rendering on every device
-

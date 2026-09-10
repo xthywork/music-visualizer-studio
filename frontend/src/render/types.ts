@@ -26,6 +26,26 @@ export interface RenderConfig {
   output: OutputConfig;
 }
 
+/**
+ * Bounded, time-aligned audio features used by animated scenes.
+ *
+ * `spectrum` is packed row-major (`frame * spectrumBands + band`) so a long
+ * song does not create one JavaScript array per frame.  All values are
+ * normalized to the range 0..1.
+ */
+export interface TemporalAudioEnvelope {
+  /** Effective frames per second. It can be lower than the requested rate for very long audio. */
+  frameRate: number;
+  /** Number of rows in each envelope and in the packed spectrum. */
+  frameCount: number;
+  amplitude: Float32Array;
+  low: Float32Array;
+  mid: Float32Array;
+  high: Float32Array;
+  spectrumBands: number;
+  spectrum: Float32Array;
+}
+
 export interface AudioAnalysis {
   duration: number;
   sampleRate: number;
@@ -35,6 +55,8 @@ export interface AudioAnalysis {
   spectrum: Float32Array;
   /** Seconds since start of detected transient/beat events. */
   beats: Float32Array;
+  /** Optional bounded time series. Older snapshots may omit this field. */
+  temporal?: TemporalAudioEnvelope;
 }
 
 export interface SceneFrameContext {

@@ -9,6 +9,8 @@ import {
   type ProjectStorage,
   type StorageEstimate,
   type StoredOutput,
+  type FileSystemFileHandleLike,
+  type StoredAudioHandle,
   StorageQuotaError,
   normalizeStoredOutput,
   isActiveRender,
@@ -18,6 +20,7 @@ import {
 export class InMemoryProjectStorage implements ProjectStorage {
   private readonly projects = new Map<string, string>();
   private readonly outputs = new Map<string, StoredOutput>();
+  private readonly audioHandles = new Map<string, StoredAudioHandle>();
   private readonly maxBytes?: number;
 
   constructor(options: { maxBytes?: number } = {}) {
@@ -43,9 +46,22 @@ export class InMemoryProjectStorage implements ProjectStorage {
 
   async deleteProject(projectId: string): Promise<void> {
     this.projects.delete(projectId);
+    this.audioHandles.delete(projectId);
     for (const [id, output] of this.outputs) {
       if (output.projectId === projectId) this.outputs.delete(id);
     }
+  }
+
+  async saveAudioHandle(projectId: string, handle: FileSystemFileHandleLike): Promise<void> {
+    this.audioHandles.set(projectId, { projectId, handle });
+  }
+
+  async getAudioHandle(projectId: string): Promise<StoredAudioHandle | undefined> {
+    return this.audioHandles.get(projectId);
+  }
+
+  async deleteAudioHandle(projectId: string): Promise<void> {
+    this.audioHandles.delete(projectId);
   }
 
   async saveOutput(output: StoredOutput): Promise<void> {

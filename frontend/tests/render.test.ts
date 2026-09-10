@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyzeAudioBuffer, analyzePcmAudioSnapshot, pcmSnapshotFromAudioBuffer, pcmSnapshotTransferables, releasePcmAudioSnapshot, type PcmAudioSnapshot } from "../src/render/audio-analysis";
+import { analysisAt, analyzeAudioBuffer, analyzePcmAudioSnapshot, pcmSnapshotFromAudioBuffer, pcmSnapshotTransferables, releasePcmAudioSnapshot, type PcmAudioSnapshot } from "../src/render/audio-analysis";
 import { codecPolicy, detectCapabilities } from "../src/render/capabilities";
 import { createRenderTiming } from "../src/render/renderer";
 import { createScene, TEMPLATE_IDS } from "../src/render/scenes";
@@ -89,6 +89,38 @@ describe("bounded audio analysis", () => {
     const snapshot: PcmAudioSnapshot = { duration: 1, sampleRate: 1_000, numberOfChannels: 1, channels: [Float32Array.from({ length: 1000 }, (_, i) => Math.sin(i / 5))] };
     const analysis = analyzePcmAudioSnapshot(snapshot, { maxPoints: 32, maxBands: 8 });
     expect(analysis.duration).toBe(1); expect(analysis.waveform.length).toBeLessThanOrEqual(32); expect(analysis.spectrum.length).toBe(8);
+  });
+  it("keeps amplitude and frequency bands time-aligned instead of cycling one spectrum", () => {
+    const sampleRate = 4_800;
+    const values = new Float32Array(sampleRate * 2);
+    for (let i = 0; i < values.length; i++) {
+      const frequency = i < sampleRate ? 80 : 1_000;
+      values[i] = Math.sin(2 * Math.PI * frequency * i / sampleRate) * .8;
+    }
+    const analysis = analyzePcmAudioSnapshot({ duration: 2, sampleRate, numberOfChannels: 1, channels: [values] }, { temporalRate: 10, maxBands: 12 });
+    expect(analysis.temporal).toBeDefined();
+    expect(analysis.temporal!.frameCount).toBe(20);
+    const early = analysisAt(analysis, .65);
+    const late = analysisAt(analysis, 1.65);
+    expect(early.low).toBeGreaterThan(early.high);
+    expect(late.mid).toBeGreaterThan(late.low);
+    expect(early.spectrumBands).not.toBe(late.spectrumBands);
+    expect(Array.from(early.spectrumBands)).not.toEqual(Array.from(late.spectrumBands));
+  });
+  it("bounds temporal buffers and clamps analysisAt outside the source duration", () => {
+    const analysis = analyzePcmAudioSnapshot({
+      duration: 600,
+      sampleRate: 48_000,
+      numberOfChannels: 1,
+      channels: [new Float32Array(48_000 * 600)],
+    }, { temporalRate: 60, maxTemporalFrames: 120, maxBands: 128 });
+    const temporal = analysis.temporal!;
+    expect(temporal.frameCount).toBe(120);
+    expect(temporal.amplitude).toHaveLength(120);
+    expect(temporal.spectrumBands).toBeLessThanOrEqual(64);
+    expect(temporal.spectrum).toHaveLength(temporal.frameCount * temporal.spectrumBands);
+    expect(analysisAt(analysis, -100).amplitude).toBe(temporal.amplitude[0]);
+    expect(analysisAt(analysis, 1000).amplitude).toBe(temporal.amplitude[temporal.frameCount - 1]);
   });
   it("copies only planar PCM and exposes transferables", () => {
     const left = Float32Array.from([0, .25, .5]); const right = Float32Array.from([0, -.25, -.5]);

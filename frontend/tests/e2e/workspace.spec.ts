@@ -57,7 +57,7 @@ test("renders, stores, reopens, and downloads a local MP4", async ({ page }, tes
   await page.reload();
   await page.locator(".project-item", { hasText: "E2E Signal" }).click();
   await expect(page.locator("#output-actions")).toBeVisible();
-  await expect(page.locator("#file-status")).toContainText("再次選擇原始音訊");
+  await expect(page.locator("#file-status")).toContainText("已保存來源");
 
   const persisted = await page.evaluate(async () => {
     const request = indexedDB.open("music-visualizer");
@@ -70,7 +70,9 @@ test("renders, stores, reopens, and downloads a local MP4", async ({ page }, tes
       allRequest.onsuccess = () => resolve(JSON.stringify(allRequest.result)); allRequest.onerror = () => reject(allRequest.error);
     });
   });
-  expect(persisted).not.toMatch(/sourceAudio|audioFile|"audio"/);
+  expect(persisted).toMatch(/sourceAudio/);
+  expect(persisted).toMatch(/signal\.wav|audio\/wav/);
+  expect(persisted).not.toMatch(/path|audioBytes|sourceAudioBytes|audioFile|handle|getFile/);
 });
 
 for (const preset of [

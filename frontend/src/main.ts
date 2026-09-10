@@ -13,12 +13,21 @@ import {
   DOMAIN_SCHEMA_VERSION,
   type ProjectRecord,
   type RenderConfiguration,
+  type SourceAudioMetadata,
 } from "./domain";
-import { IndexedDbProjectStorage } from "./storage";
+import {
+  hasFileSystemAccessPicker,
+  pickAudioSource,
+  sourceAudioMetadataFromFile,
+  type FileSystemFileHandleLike,
+  IndexedDbProjectStorage,
+} from "./storage";
 import { ProjectService } from "./ui/project-service";
 import { renderProgressMessage } from "./ui/render-progress";
 import { detectCapabilities } from "./render/capabilities";
 import { renderConfigFromDomain } from "./render/domain-adapter";
+import { createScene } from "./render/scenes";
+import type { AudioAnalysis } from "./render/types";
 import { RenderController, type RenderUpdate } from "./workers/orchestrator";
 
 interface DraftState {
@@ -32,6 +41,9 @@ interface DraftState {
   duration: number | null;
   coverUrl: string | null;
   backgroundUrl: string | null;
+  sourceAudioMetadata?: SourceAudioMetadata;
+  sourceAudioHandle?: FileSystemFileHandleLike;
+  sourceSelectionDirty: boolean;
 }
 
 const state: DraftState = {
@@ -45,11 +57,19 @@ const state: DraftState = {
   duration: null,
   coverUrl: null,
   backgroundUrl: null,
+  sourceSelectionDirty: false,
 };
 
 const previewAssets: { cover: HTMLImageElement | null; background: HTMLImageElement | null } = {
   cover: null,
   background: null,
+};
+const previewAnalysis: AudioAnalysis = {
+  duration: 8,
+  sampleRate: 48_000,
+  waveform: Float32Array.from({ length: 256 }, (_, index) => .5 + .28 * Math.sin(index * .21) + .12 * Math.sin(index * .061)),
+  spectrum: Float32Array.from({ length: 64 }, (_, index) => .16 + .5 * (0.5 + 0.5 * Math.sin(index * .47)) * (0.72 + 0.28 * Math.sin(index * .13))),
+  beats: Float32Array.from([.6, 1.85, 3.1, 4.45, 5.9, 7.2]),
 };
 const projectService = new ProjectService(new IndexedDbProjectStorage());
 let currentProjectId: string | null = null;
@@ -83,6 +103,8 @@ app.innerHTML = `
           <div class="section">
             <div class="section-title"><h2>1. 選擇音訊</h2><span>MP3 · WAV · M4A · 最長 10 分鐘</span></div>
             <label class="dropzone"><input id="audio-input" type="file" accept=".mp3,.wav,.m4a,audio/mpeg,audio/wav,audio/mp4" /><span class="upload-icon">♪</span><strong>點擊選擇音訊</strong><small>檔案只在目前的瀏覽器工作階段中使用</small></label>
+            <button class="secondary audio-picker" id="audio-picker" type="button" hidden>使用檔案系統選擇</button>
+            <button class="secondary audio-reconnect" id="audio-reconnect" type="button" hidden>重新連結／載入音訊</button>
             <p class="file-status" id="file-status">尚未選擇音訊</p>
           </div>
           <div class="section">
@@ -135,6 +157,8 @@ const cancelButton = document.querySelector<HTMLButtonElement>("#cancel-button")
 const renderStatus = document.querySelector<HTMLSpanElement>("#render-status")!;
 const progressValue = document.querySelector<HTMLSpanElement>("#progress-value")!;
 const progressBar = document.querySelector<HTMLDivElement>("#progress-bar")!;
+const audioPickerButton = document.querySelector<HTMLButtonElement>("#audio-picker")!;
+const audioReconnectButton = document.querySelector<HTMLButtonElement>("#audio-reconnect")!;
 
 function renderTemplateCards(): void {
   templatesElement.innerHTML = TEMPLATES.map((template) => `
@@ -175,6 +199,7 @@ function configurationFromState(): RenderConfiguration {
     text: { title: state.title, artist: state.artist },
     ...(state.coverUrl ? { coverImage: { kind: "data-url" as const, value: state.coverUrl, alt: "Cover art" } } : {}),
     ...(state.backgroundUrl ? { backgroundImage: { kind: "data-url" as const, value: state.backgroundUrl, alt: "Background" } } : {}),
+    ...(state.sourceAudioMetadata ? { sourceAudio: state.sourceAudioMetadata } : {}),
     output: {
       aspectRatio: state.aspectRatio,
       width: preset.width,
@@ -197,6 +222,10 @@ async function saveProject(): Promise<ProjectRecord> {
   const project = currentProjectId
     ? await projectService.updateProject(currentProjectId, configuration, name)
     : await projectService.createProject(name, configuration);
+  if (state.sourceSelectionDirty && state.sourceAudioMetadata) {
+    await projectService.attachAudioSource(project.id, state.sourceAudioMetadata, state.sourceAudioHandle);
+    state.sourceSelectionDirty = false;
+  }
   currentProjectId = project.id;
   await refreshProjects();
   return project;
@@ -234,12 +263,17 @@ async function openProject(projectId: string): Promise<void> {
   const preset = OUTPUT_PRESETS[state.aspectRatio].find((item) => item.width === config.output.width && item.height === config.output.height);
   state.presetId = preset?.id ?? OUTPUT_PRESETS[state.aspectRatio][0].id;
   state.audioFile = null; state.duration = null;
+  state.sourceAudioMetadata = config.sourceAudio;
+  state.sourceAudioHandle = undefined;
+  state.sourceSelectionDirty = false;
   state.coverUrl = config.coverImage?.value ?? null; state.backgroundUrl = config.backgroundImage?.value ?? null;
   previewAssets.cover = state.coverUrl ? await loadPreviewImage(state.coverUrl).catch(() => null) : null;
   previewAssets.background = state.backgroundUrl ? await loadPreviewImage(state.backgroundUrl).catch(() => null) : null;
   document.querySelector<HTMLInputElement>("#title-input")!.value = state.title;
   document.querySelector<HTMLInputElement>("#artist-input")!.value = state.artist;
-  renderButton.disabled = true; setFileStatus("重新生成前請再次選擇原始音訊。");
+  renderButton.disabled = true;
+  audioReconnectButton.hidden = !config.sourceAudio || !hasFileSystemAccessPicker();
+  setFileStatus(config.sourceAudio ? `已保存來源：${config.sourceAudio.filename}；重新生成前請再次載入。` : "重新生成前請再次選擇原始音訊。");
   renderTemplateCards(); populateOutputControls(); updateOutputLabels();
   await showLatestOutput(project);
 }
@@ -275,9 +309,11 @@ function clearOutputPreview(): void {
 function resetDraft(): void {
   currentProjectId = null; state.templateId = "spectrum-cover"; state.aspectRatio = "16:9"; state.presetId = "16-9-1080p"; state.frameRate = 30;
   state.title = "Midnight Signal"; state.artist = "Your Artist"; state.audioFile = null; state.duration = null; state.coverUrl = null; state.backgroundUrl = null;
+  state.sourceAudioMetadata = undefined; state.sourceAudioHandle = undefined; state.sourceSelectionDirty = false;
   previewAssets.cover = null; previewAssets.background = null;
   document.querySelector<HTMLInputElement>("#title-input")!.value = state.title; document.querySelector<HTMLInputElement>("#artist-input")!.value = state.artist;
   renderButton.disabled = true; document.querySelector<HTMLDivElement>("#output-actions")!.hidden = true; clearOutputPreview();
+  audioReconnectButton.hidden = true;
   setFileStatus("尚未選擇音訊"); renderTemplateCards(); populateOutputControls(); updateOutputLabels();
 }
 
@@ -408,6 +444,7 @@ async function finishRenderSession(message: string, completed: boolean): Promise
   state.duration = null;
   document.querySelector<HTMLInputElement>("#audio-input")!.value = "";
   cancelButton.hidden = true;
+  audioReconnectButton.hidden = !state.sourceAudioMetadata || !hasFileSystemAccessPicker();
   renderButton.disabled = true;
   setRenderProgress(completed ? 1 : 0, message);
   setFileStatus("來源音訊已從工作階段釋放；重新生成時請再次選擇。", completed ? "success" : "");
@@ -448,93 +485,22 @@ async function refreshCapability(): Promise<void> {
 
 function drawPreview(time: number): void {
   const { width, height } = canvas;
-  const gradient = context.createLinearGradient(0, 0, width, height);
-  if (state.templateId === "vinyl-particle") {
-    gradient.addColorStop(0, "#17111e"); gradient.addColorStop(1, "#08090f");
-  } else if (state.templateId === "abstract-pulse") {
-    gradient.addColorStop(0, "#201858"); gradient.addColorStop(0.55, "#10192f"); gradient.addColorStop(1, "#08100f");
-  } else {
-    gradient.addColorStop(0, "#0f1720"); gradient.addColorStop(1, "#080a10");
-  }
-  context.fillStyle = gradient; context.fillRect(0, 0, width, height);
-  if (previewAssets.background?.complete) {
-    context.save();
-    context.globalAlpha = 0.3;
-    context.drawImage(previewAssets.background, 0, 0, width, height);
-    context.restore();
-  }
-  context.save();
-  if (state.templateId === "vinyl-particle") {
-    const energy = 0.58 + 0.24 * Math.sin(time * 2.1) + 0.12 * Math.sin(time * 5.7);
-    const radius = Math.min(width, height) * (0.25 + energy * 0.025);
-    context.translate(width * .5, height * .44); context.rotate(time * .18);
-    context.fillStyle = "#11131a"; context.beginPath(); context.arc(0, 0, radius, 0, Math.PI * 2); context.fill();
-    context.strokeStyle = "rgba(255,255,255,.1)";
-    for (let index = 1; index < 9; index++) { context.beginPath(); context.arc(0, 0, radius * index / 9, 0, Math.PI * 2); context.stroke(); }
-    const labelRadius = radius * .36;
-    context.fillStyle = "#ff7a9c"; context.beginPath(); context.arc(0, 0, labelRadius, 0, Math.PI * 2); context.fill();
-    if (previewAssets.cover?.complete) {
-      context.save();
-      context.beginPath(); context.arc(0, 0, labelRadius, 0, Math.PI * 2); context.clip();
-      context.drawImage(previewAssets.cover, -labelRadius, -labelRadius, labelRadius * 2, labelRadius * 2);
-      context.restore();
-    }
-    context.fillStyle = "#f5d7ac"; context.beginPath(); context.arc(0, 0, radius * .035, 0, Math.PI * 2); context.fill();
-    context.restore();
-    // Keep the particles well outside the record and move them slowly enough
-    // that their larger orbit is readable in the preview.
-    for (let index = 0; index < 72; index++) {
-      const angle = index * 2.399963 + time * (.022 + (index % 7) * .003);
-      const orbit = radius * (1.3 + (index * 17 % 100) / 100 * 1.1 + Math.sin(time * .42 + index * .71) * .08);
-      const x = width * .5 + Math.cos(angle) * orbit * (1 + energy * .18);
-      const y = height * .44 + Math.sin(angle) * orbit * (1 + energy * .18);
-      context.beginPath(); context.arc(x, y, Math.max(1.5, width / 430 * (1 + index % 3 / 3)), 0, Math.PI * 2);
-      context.fillStyle = `hsla(${175 + index % 80}, 85%, ${58 + index % 20}%, ${.4 + (index % 3) * .12})`; context.fill();
-    }
-  } else {
-    if (state.templateId === "abstract-pulse") {
-      const pulse = .5 + .5 * Math.sin(time * 2.2);
-      for (let ring = 7; ring > 0; ring--) {
-        const radius = Math.min(width, height) * (.13 + ring * .085 + pulse * (.08 + ring * .012) + Math.sin(time * 1.15 + ring * .72) * .012);
-        context.beginPath(); context.arc(width * .5, height * .5, radius, 0, Math.PI * 2);
-        context.strokeStyle = `hsla(${254 + ring * 8}, 94%, ${58 + ring * 3}%, ${.26 + pulse * .28})`;
-        context.lineWidth = Math.max(2, width / 220); context.stroke();
-      }
-      context.beginPath();
-      for (let index = 0; index < 160; index++) {
-        const angle = index / 160 * Math.PI * 2 + time * .08;
-        const radius = Math.min(width, height) * (.39 + Math.sin(index * .63 + time * 2.1) * .07 + pulse * .18);
-        const x = width * .5 + Math.cos(angle) * radius; const y = height * .5 + Math.sin(angle) * radius;
-        index ? context.lineTo(x, y) : context.moveTo(x, y);
-      }
-      context.closePath(); context.strokeStyle = "#b995ff"; context.lineWidth = Math.max(2, width / 170); context.stroke();
-    } else {
-      const centerX = width * .5; const centerY = height * .36; const radius = Math.min(width, height) * .22;
-      const phase = time * .62;
-      context.fillStyle = "rgba(8,7,25,.72)"; context.beginPath(); context.arc(centerX, centerY, radius * (1 + (.5 + .5 * Math.sin(time * 2.1)) * .07), 0, Math.PI * 2); context.fill();
-      context.strokeStyle = "#7cf7ff"; context.lineWidth = Math.max(1, width / 300);
-      for (let index = 0; index < 48; index++) {
-        const angle = index / 48 * Math.PI * 2 + phase; const value = .18 + .52 * (.5 + .5 * Math.sin(time * 2.4 + index * .73));
-        context.beginPath(); context.moveTo(centerX + Math.cos(angle) * radius * 1.08, centerY + Math.sin(angle) * radius * 1.08); context.lineTo(centerX + Math.cos(angle) * radius * (1.12 + value), centerY + Math.sin(angle) * radius * (1.12 + value)); context.stroke();
-      }
-      context.beginPath();
-      for (let index = 0; index < 120; index++) {
-        const angle = index / 120 * Math.PI * 2 + phase * .35; const orbit = radius * (1.16 + (.5 + .5 * Math.sin(time * 2.8 + index * .41)) * .16);
-        const x = centerX + Math.cos(angle) * orbit; const y = centerY + Math.sin(angle) * orbit; index ? context.lineTo(x, y) : context.moveTo(x, y);
-      }
-      context.closePath(); context.strokeStyle = "rgba(124,247,255,.72)"; context.stroke();
-    }
-    if (state.templateId === "spectrum-cover" && previewAssets.cover?.complete) {
-      const size = Math.min(width, height) * .34;
-      context.save(); context.globalAlpha = .84;
-      context.drawImage(previewAssets.cover, width / 2 - size / 2, height * .41 - size / 2, size, size);
-      context.restore();
-    }
-  }
-  context.restore();
-  context.textAlign = "center"; context.fillStyle = "#fff";
-  context.font = `600 ${Math.max(18, width * .038)}px Space Grotesk`; context.fillText(state.title || "Untitled", width / 2, height * .78);
-  context.fillStyle = "rgba(255,255,255,.62)"; context.font = `500 ${Math.max(11, width * .018)}px DM Sans`; context.fillText(state.artist || "Unknown Artist", width / 2, height * .84);
+  const scene = createScene(state.templateId, {
+    title: state.title,
+    artist: state.artist,
+    assets: {
+      coverImage: previewAssets.cover?.complete ? previewAssets.cover : undefined,
+      backgroundImage: previewAssets.background?.complete ? previewAssets.background : undefined,
+    },
+  });
+  scene.render(context, {
+    time,
+    frame: Math.floor(time * state.frameRate),
+    progress: (time % previewAnalysis.duration) / previewAnalysis.duration,
+    width,
+    height,
+    analysis: previewAnalysis,
+  });
 }
 
 function setFileStatus(message: string, kind = ""): void {
@@ -542,7 +508,7 @@ function setFileStatus(message: string, kind = ""): void {
   element.textContent = message; element.className = `file-status ${kind}`;
 }
 
-async function inspectAudio(file: File): Promise<void> {
+async function inspectAudio(file: File, handle?: FileSystemFileHandleLike): Promise<void> {
   const problem = validateAudioFile(file);
   if (problem) { state.audioFile = null; renderButton.disabled = true; setFileStatus(problem, "error"); return; }
   const url = URL.createObjectURL(file);
@@ -554,9 +520,15 @@ async function inspectAudio(file: File): Promise<void> {
     });
     const durationProblem = validateAudioDuration(duration);
     if (durationProblem) throw new Error(durationProblem);
-    state.audioFile = file; state.duration = duration; renderButton.disabled = false;
+    state.audioFile = file; state.duration = duration;
+    state.sourceAudioMetadata = sourceAudioMetadataFromFile(file);
+    state.sourceAudioHandle = handle;
+    state.sourceSelectionDirty = true;
+    audioReconnectButton.hidden = true;
+    renderButton.disabled = false;
     setFileStatus(`${file.name} · ${formatBytes(file.size)} · ${Math.floor(duration / 60)}:${String(Math.round(duration % 60)).padStart(2, "0")}`, "success");
     await refreshCapability();
+    scheduleProjectSave();
   } catch (error) {
     state.audioFile = null; state.duration = null; renderButton.disabled = true;
     setFileStatus(error instanceof Error ? error.message : "無法讀取音訊。", "error");
@@ -597,6 +569,28 @@ function attachImageInput(id: string, nameId: string, target: "coverUrl" | "back
 
 document.querySelector<HTMLInputElement>("#audio-input")!.addEventListener("change", (event) => {
   const file = (event.target as HTMLInputElement).files?.[0]; if (file) void inspectAudio(file);
+});
+audioPickerButton.hidden = !hasFileSystemAccessPicker();
+audioPickerButton.addEventListener("click", async () => {
+  try {
+    const selected = await pickAudioSource();
+    await inspectAudio(selected.file, selected.handle);
+  } catch (error) {
+    setFileStatus(error instanceof Error ? error.message : "無法開啟檔案選擇器。", "error");
+  }
+});
+audioReconnectButton.addEventListener("click", async () => {
+  if (!currentProjectId) return;
+  try {
+    const selected = await projectService.reopenAudioSource(currentProjectId);
+    if (selected) await inspectAudio(selected.file, selected.handle);
+    else {
+      const picked = await pickAudioSource();
+      await inspectAudio(picked.file, picked.handle);
+    }
+  } catch (error) {
+    setFileStatus(error instanceof Error ? error.message : "無法重新連結來源音訊；請使用檔案輸入。", "error");
+  }
 });
 document.querySelector<HTMLInputElement>("#title-input")!.addEventListener("input", (event) => { state.title = (event.target as HTMLInputElement).value; drawPreview(performance.now() / 1000); scheduleProjectSave(); });
 document.querySelector<HTMLInputElement>("#artist-input")!.addEventListener("input", (event) => { state.artist = (event.target as HTMLInputElement).value; drawPreview(performance.now() / 1000); scheduleProjectSave(); });

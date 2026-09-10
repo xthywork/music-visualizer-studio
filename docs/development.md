@@ -92,7 +92,9 @@ performance can still constrain a render.
 - Keep template definitions serializable and independent from browser UI components.
 - Keep rendering off the main UI thread.
 - Treat browser capability checks as runtime data, not user-agent guesses.
-- Never persist source audio.
+- Never persist source audio bytes or absolute paths. Sanitized identity metadata
+  may be stored in project JSON, and an optional File System Access handle may be
+  stored separately in IndexedDB.
 - Route all project persistence through a storage abstraction.
 - Keep a clear boundary between browser rendering and the future server-rendering API.
 - Test each output aspect ratio and a representative low/high resolution before adding new templates.
