@@ -14,7 +14,9 @@ export class RenderController {
   start(config: RenderConfig, audio: PcmAudioSnapshot, duration = audio.duration, jobId = createJobId()): string {
     if (this.state === "queued" || this.state === "rendering") throw new Error("A render is already in progress.");
     this.jobId = jobId; this.state = "queued";
-    const request = freezeSnapshot({ type: "start", jobId, snapshot: { config, audio, duration } });
+    // PCM is already a transient copy made from AudioBuffer. Transfer that
+    // copy directly instead of cloning the entire track a second time.
+    const request = freezeSnapshot({ type: "start", jobId, snapshot: { config, audio, duration } }, { copyAudio: false });
     this.worker.postMessage(request, pcmSnapshotTransferables(request.snapshot.audio)); return jobId;
   }
   /** Decode on the main thread, copy only transient PCM, then transfer it to the worker. */

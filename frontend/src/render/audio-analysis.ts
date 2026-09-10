@@ -31,6 +31,13 @@ export function pcmSnapshotTransferables(snapshot: PcmAudioSnapshot): Transferab
   return snapshot.channels.map((channel) => channel.buffer);
 }
 
+/** Release transferred PCM references as soon as a render session is over. */
+export function releasePcmAudioSnapshot(snapshot: PcmAudioSnapshot): void {
+  for (let index = 0; index < snapshot.channels.length; index++) snapshot.channels[index] = new Float32Array(0);
+  snapshot.channels.length = 0;
+  snapshot.numberOfChannels = 0;
+}
+
 export async function decodeAudioBuffer(bytes: ArrayBuffer): Promise<{ buffer: AudioBuffer; close: () => Promise<void> }> {
   const Ctx = globalThis.AudioContext ?? (globalThis as typeof globalThis & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!Ctx) throw new Error("This browser cannot decode audio in memory (AudioContext unavailable).");

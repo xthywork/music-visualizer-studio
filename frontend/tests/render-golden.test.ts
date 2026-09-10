@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createScene } from "../src/render/scenes";
+import { createScene, VinylParticleScene } from "../src/render/scenes";
 import { dimensionsFor, type AspectRatio, type AudioAnalysis, type TemplateId } from "../src/render/types";
 
 /** A small recording context keeps golden tests independent of GPU/browser Canvas. */
@@ -39,13 +39,13 @@ const analysis: AudioAnalysis = {
 const ratios: AspectRatio[] = ["16:9", "9:16", "1:1"];
 const templates: TemplateId[] = ["spectrum-cover", "vinyl-particle", "abstract-pulse"];
 
-function renderSignature(template: TemplateId, aspectRatio: AspectRatio): string {
+function renderSignature(template: TemplateId, aspectRatio: AspectRatio, time = .5): string {
   // 180px long edge keeps this suite cheap while still exercising orientation changes.
   const dimensions = dimensionsFor({ aspectRatio, resolution: "720p", frameRate: 30 });
   const scale = 180 / Math.max(dimensions.width, dimensions.height);
   const width = Math.max(1, Math.round(dimensions.width * scale)); const height = Math.max(1, Math.round(dimensions.height * scale));
   const { context, calls } = recordingContext();
-  createScene(template, { title: "Golden title", artist: "Golden artist" }).render(context, { time: .5, frame: 15, progress: .25, width, height, analysis });
+  createScene(template, { title: "Golden title", artist: "Golden artist" }).render(context, { time, frame: Math.round(time * 30), progress: .25, width, height, analysis });
   // A stable FNV-1a signature makes accidental visual-operation changes obvious without storing bitmaps.
   const source = JSON.stringify(calls); let hash = 2_166_136_261;
   for (let index = 0; index < source.length; index++) { hash ^= source.charCodeAt(index); hash = Math.imul(hash, 16_777_619); }
@@ -54,15 +54,15 @@ function renderSignature(template: TemplateId, aspectRatio: AspectRatio): string
 
 describe("low-resolution visualizer golden frames", () => {
   const golden: Record<string, string> = {
-    "spectrum-cover/16:9": "180x101:c2f4cd99",
-    "spectrum-cover/9:16": "101x180:2623f828",
-    "spectrum-cover/1:1": "180x180:676aaf37",
-    "vinyl-particle/16:9": "180x101:97c42e55",
-    "vinyl-particle/9:16": "101x180:fd8e4375",
-    "vinyl-particle/1:1": "180x180:f04a7d2e",
-    "abstract-pulse/16:9": "180x101:31cd0a52",
-    "abstract-pulse/9:16": "101x180:bbc872db",
-    "abstract-pulse/1:1": "180x180:94a26a7",
+    "spectrum-cover/16:9": "180x101:b29dcc19",
+    "spectrum-cover/9:16": "101x180:f937085b",
+    "spectrum-cover/1:1": "180x180:5e3d0e3f",
+    "vinyl-particle/16:9": "180x101:5a7581e",
+    "vinyl-particle/9:16": "101x180:31983aa4",
+    "vinyl-particle/1:1": "180x180:84a3237f",
+    "abstract-pulse/16:9": "180x101:742b1ead",
+    "abstract-pulse/9:16": "101x180:c03112f",
+    "abstract-pulse/1:1": "180x180:97cf2a90",
   };
 
   for (const template of templates) {
@@ -73,4 +73,17 @@ describe("low-resolution visualizer golden frames", () => {
       });
     }
   }
+});
+
+describe("visual motion and cover treatment", () => {
+  it("keeps every template visibly time-responsive", () => {
+    for (const template of templates) expect(renderSignature(template, "1:1", .5)).not.toBe(renderSignature(template, "1:1", .83));
+  });
+
+  it("clips a supplied cover image into the vinyl label", () => {
+    const { context, calls } = recordingContext();
+    new VinylParticleScene({ coverImage: {} as ImageBitmap }).render(context, { time: .5, frame: 15, progress: .25, width: 180, height: 180, analysis });
+    expect(calls.some(([name]) => name === "clip")).toBe(true);
+    expect(calls.some(([name]) => name === "drawImage")).toBe(true);
+  });
 });

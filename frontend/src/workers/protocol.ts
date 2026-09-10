@@ -12,9 +12,15 @@ export type RenderWorkerResponse =
   | { type: "cancel"; jobId: string }
   | { type: "error"; jobId: string; error: { code: string; message: string } };
 
-export function freezeSnapshot(snapshot: Extract<RenderWorkerRequest, { type: "start" }>): Extract<RenderWorkerRequest, { type: "start" }> {
+export function freezeSnapshot(snapshot: Extract<RenderWorkerRequest, { type: "start" }>, options: { copyAudio?: boolean } = {}): Extract<RenderWorkerRequest, { type: "start" }> {
   const start = snapshot as Extract<RenderWorkerRequest, { type: "start" }>;
-  const immutable = { ...start, snapshot: { ...start.snapshot, config: JSON.parse(JSON.stringify(start.snapshot.config)), audio: { ...start.snapshot.audio, channels: start.snapshot.audio.channels.map((channel) => new Float32Array(channel)) } } } as Extract<RenderWorkerRequest, { type: "start" }>;
+  // The normal controller path transfers these buffers immediately, so a
+  // second full PCM copy only inflates the render peak. Keep the defensive
+  // copy as the default for callers that need an immutable standalone value.
+  const audio = options.copyAudio === false
+    ? start.snapshot.audio
+    : { ...start.snapshot.audio, channels: start.snapshot.audio.channels.map((channel) => new Float32Array(channel)) };
+  const immutable = { ...start, snapshot: { ...start.snapshot, config: JSON.parse(JSON.stringify(start.snapshot.config)), audio } } as Extract<RenderWorkerRequest, { type: "start" }>;
   return Object.freeze(immutable);
 }
 

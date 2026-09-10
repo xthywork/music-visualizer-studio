@@ -59,6 +59,7 @@ let activeRenderId: string | null = null;
 let renderController: RenderController | null = null;
 let cancelRequested = false;
 let capabilitySupported = false;
+let currentOutputUrl: string | null = null;
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("Application root is missing");
@@ -247,15 +248,28 @@ async function showLatestOutput(project: ProjectRecord): Promise<void> {
   const latest = [...project.renders].reverse().find((render) => render.status === "completed");
   const actions = document.querySelector<HTMLDivElement>("#output-actions")!;
   const video = document.querySelector<HTMLVideoElement>("#output-preview")!;
-  if (!latest) { actions.hidden = true; video.hidden = true; return; }
+  if (!latest) { clearOutputPreview(); actions.hidden = true; return; }
   const stored = await projectService.getOutput(project.id, latest.id);
-  if (!stored) { actions.hidden = true; video.hidden = true; document.querySelector("#render-status")!.textContent = "本機 MP4 已不存在；請重新上傳音訊生成。"; return; }
+  if (!stored) { clearOutputPreview(); actions.hidden = true; document.querySelector("#render-status")!.textContent = "本機 MP4 已不存在；請重新上傳音訊生成。"; return; }
   const link = document.querySelector<HTMLAnchorElement>("#download-link")!;
-  if (link.href.startsWith("blob:")) URL.revokeObjectURL(link.href);
-  link.href = URL.createObjectURL(stored.blob); link.download = `${safeFileName(project.name)}.mp4`;
-  video.src = link.href; video.hidden = false;
+  revokeCurrentOutputUrl();
+  currentOutputUrl = URL.createObjectURL(stored.blob);
+  link.href = currentOutputUrl; link.download = `${safeFileName(project.name)}.mp4`;
+  video.src = currentOutputUrl; video.hidden = false;
   actions.dataset.renderId = latest.id; actions.hidden = false;
   document.querySelector("#render-status")!.textContent = "本機 MP4 可預覽與下載";
+}
+
+function revokeCurrentOutputUrl(): void {
+  if (currentOutputUrl) URL.revokeObjectURL(currentOutputUrl);
+  currentOutputUrl = null;
+}
+
+function clearOutputPreview(): void {
+  revokeCurrentOutputUrl();
+  const video = document.querySelector<HTMLVideoElement>("#output-preview")!;
+  video.pause(); video.removeAttribute("src"); video.load(); video.hidden = true;
+  document.querySelector<HTMLAnchorElement>("#download-link")!.removeAttribute("href");
 }
 
 function resetDraft(): void {
@@ -263,7 +277,7 @@ function resetDraft(): void {
   state.title = "Midnight Signal"; state.artist = "Your Artist"; state.audioFile = null; state.duration = null; state.coverUrl = null; state.backgroundUrl = null;
   previewAssets.cover = null; previewAssets.background = null;
   document.querySelector<HTMLInputElement>("#title-input")!.value = state.title; document.querySelector<HTMLInputElement>("#artist-input")!.value = state.artist;
-  renderButton.disabled = true; document.querySelector<HTMLDivElement>("#output-actions")!.hidden = true; document.querySelector<HTMLVideoElement>("#output-preview")!.hidden = true;
+  renderButton.disabled = true; document.querySelector<HTMLDivElement>("#output-actions")!.hidden = true; clearOutputPreview();
   setFileStatus("尚未選擇音訊"); renderTemplateCards(); populateOutputControls(); updateOutputLabels();
 }
 
@@ -451,26 +465,65 @@ function drawPreview(time: number): void {
   }
   context.save();
   if (state.templateId === "vinyl-particle") {
-    const radius = Math.min(width, height) * 0.25;
+    const energy = 0.58 + 0.24 * Math.sin(time * 2.1) + 0.12 * Math.sin(time * 5.7);
+    const radius = Math.min(width, height) * (0.25 + energy * 0.025);
     context.translate(width * .5, height * .44); context.rotate(time * .18);
     context.fillStyle = "#11131a"; context.beginPath(); context.arc(0, 0, radius, 0, Math.PI * 2); context.fill();
     context.strokeStyle = "rgba(255,255,255,.1)";
     for (let index = 1; index < 9; index++) { context.beginPath(); context.arc(0, 0, radius * index / 9, 0, Math.PI * 2); context.stroke(); }
-    context.fillStyle = "#ff7a9c"; context.beginPath(); context.arc(0, 0, radius * .26, 0, Math.PI * 2); context.fill();
+    const labelRadius = radius * .36;
+    context.fillStyle = "#ff7a9c"; context.beginPath(); context.arc(0, 0, labelRadius, 0, Math.PI * 2); context.fill();
     if (previewAssets.cover?.complete) {
       context.save();
-      context.beginPath(); context.arc(0, 0, radius * .24, 0, Math.PI * 2); context.clip();
-      context.drawImage(previewAssets.cover, -radius * .24, -radius * .24, radius * .48, radius * .48);
+      context.beginPath(); context.arc(0, 0, labelRadius, 0, Math.PI * 2); context.clip();
+      context.drawImage(previewAssets.cover, -labelRadius, -labelRadius, labelRadius * 2, labelRadius * 2);
       context.restore();
     }
-  } else {
-    context.strokeStyle = state.templateId === "abstract-pulse" ? "#a99dff" : "#64f0d0";
-    context.lineWidth = Math.max(2, width / 420); context.beginPath();
-    for (let x = 0; x <= width; x += Math.max(2, width / 180)) {
-      const y = height * .58 + Math.sin(x * .035 + time * 2) * height * .065 * (0.6 + .4 * Math.sin(x * .009));
-      if (x === 0) context.moveTo(x, y); else context.lineTo(x, y);
+    context.fillStyle = "#f5d7ac"; context.beginPath(); context.arc(0, 0, radius * .035, 0, Math.PI * 2); context.fill();
+    context.restore();
+    // Keep the particles well outside the record and move them slowly enough
+    // that their larger orbit is readable in the preview.
+    for (let index = 0; index < 72; index++) {
+      const angle = index * 2.399963 + time * (.022 + (index % 7) * .003);
+      const orbit = radius * (1.3 + (index * 17 % 100) / 100 * 1.1 + Math.sin(time * .42 + index * .71) * .08);
+      const x = width * .5 + Math.cos(angle) * orbit * (1 + energy * .18);
+      const y = height * .44 + Math.sin(angle) * orbit * (1 + energy * .18);
+      context.beginPath(); context.arc(x, y, Math.max(1.5, width / 430 * (1 + index % 3 / 3)), 0, Math.PI * 2);
+      context.fillStyle = `hsla(${175 + index % 80}, 85%, ${58 + index % 20}%, ${.4 + (index % 3) * .12})`; context.fill();
     }
-    context.stroke();
+  } else {
+    if (state.templateId === "abstract-pulse") {
+      const pulse = .5 + .5 * Math.sin(time * 2.2);
+      for (let ring = 7; ring > 0; ring--) {
+        const radius = Math.min(width, height) * (.13 + ring * .085 + pulse * (.08 + ring * .012) + Math.sin(time * 1.15 + ring * .72) * .012);
+        context.beginPath(); context.arc(width * .5, height * .5, radius, 0, Math.PI * 2);
+        context.strokeStyle = `hsla(${254 + ring * 8}, 94%, ${58 + ring * 3}%, ${.26 + pulse * .28})`;
+        context.lineWidth = Math.max(2, width / 220); context.stroke();
+      }
+      context.beginPath();
+      for (let index = 0; index < 160; index++) {
+        const angle = index / 160 * Math.PI * 2 + time * .08;
+        const radius = Math.min(width, height) * (.39 + Math.sin(index * .63 + time * 2.1) * .07 + pulse * .18);
+        const x = width * .5 + Math.cos(angle) * radius; const y = height * .5 + Math.sin(angle) * radius;
+        index ? context.lineTo(x, y) : context.moveTo(x, y);
+      }
+      context.closePath(); context.strokeStyle = "#b995ff"; context.lineWidth = Math.max(2, width / 170); context.stroke();
+    } else {
+      const centerX = width * .5; const centerY = height * .36; const radius = Math.min(width, height) * .22;
+      const phase = time * .62;
+      context.fillStyle = "rgba(8,7,25,.72)"; context.beginPath(); context.arc(centerX, centerY, radius * (1 + (.5 + .5 * Math.sin(time * 2.1)) * .07), 0, Math.PI * 2); context.fill();
+      context.strokeStyle = "#7cf7ff"; context.lineWidth = Math.max(1, width / 300);
+      for (let index = 0; index < 48; index++) {
+        const angle = index / 48 * Math.PI * 2 + phase; const value = .18 + .52 * (.5 + .5 * Math.sin(time * 2.4 + index * .73));
+        context.beginPath(); context.moveTo(centerX + Math.cos(angle) * radius * 1.08, centerY + Math.sin(angle) * radius * 1.08); context.lineTo(centerX + Math.cos(angle) * radius * (1.12 + value), centerY + Math.sin(angle) * radius * (1.12 + value)); context.stroke();
+      }
+      context.beginPath();
+      for (let index = 0; index < 120; index++) {
+        const angle = index / 120 * Math.PI * 2 + phase * .35; const orbit = radius * (1.16 + (.5 + .5 * Math.sin(time * 2.8 + index * .41)) * .16);
+        const x = centerX + Math.cos(angle) * orbit; const y = centerY + Math.sin(angle) * orbit; index ? context.lineTo(x, y) : context.moveTo(x, y);
+      }
+      context.closePath(); context.strokeStyle = "rgba(124,247,255,.72)"; context.stroke();
+    }
     if (state.templateId === "spectrum-cover" && previewAssets.cover?.complete) {
       const size = Math.min(width, height) * .34;
       context.save(); context.globalAlpha = .84;
@@ -559,7 +612,7 @@ document.querySelector<HTMLButtonElement>("#delete-output")!.addEventListener("c
   if (!renderId) return;
   await projectService.deleteOutput(currentProjectId, renderId);
   document.querySelector<HTMLDivElement>("#output-actions")!.hidden = true;
-  const video = document.querySelector<HTMLVideoElement>("#output-preview")!; video.pause(); video.removeAttribute("src"); video.load(); video.hidden = true;
+  clearOutputPreview();
   await refreshProjects();
 });
 
@@ -576,7 +629,7 @@ drawPreview(0);
 let animationFrame = 0;
 function animate(now: number): void { drawPreview(now / 1000); animationFrame = requestAnimationFrame(animate); }
 animationFrame = requestAnimationFrame(animate);
-window.addEventListener("beforeunload", () => cancelAnimationFrame(animationFrame));
+window.addEventListener("beforeunload", () => { cancelAnimationFrame(animationFrame); revokeCurrentOutputUrl(); });
 void projectService.reconcileInterruptedRenders().then(refreshProjects).catch((error) => {
   document.querySelector("#storage-usage")!.textContent = error instanceof Error ? error.message : "無法開啟本機資料庫";
 });

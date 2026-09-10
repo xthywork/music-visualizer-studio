@@ -12,22 +12,52 @@ export type MuxerFactory = (metadata: MuxMetadata) => Mp4MuxerLike;
 export class Mp4MuxerAdapter {
   private muxer?: Mp4MuxerLike;
   constructor(private readonly factory?: MuxerFactory) {}
-  mux(input: MuxerInput): Blob {
+
+  /** Start a streaming mux session before encoders begin producing chunks. */
+  begin(metadata: MuxMetadata): void {
     if (!this.factory) throw new Error("MP4 muxer is not configured. Install mp4-muxer and provide a MuxerFactory.");
-    this.muxer = this.factory(input.metadata);
-    for (const chunk of input.video) this.muxer.addVideoChunk(chunk);
-    for (const chunk of input.audio) this.muxer.addAudioChunk(chunk);
+    this.close();
+    this.muxer = this.factory(metadata);
+  }
+  addVideoChunk(chunk: EncodedChunk): void {
+    if (!this.muxer) throw new Error("MP4 muxer session has not started.");
+    this.muxer.addVideoChunk(chunk);
+  }
+  addAudioChunk(chunk: EncodedChunk): void {
+    if (!this.muxer) throw new Error("MP4 muxer session has not started.");
+    this.muxer.addAudioChunk(chunk);
+  }
+  finalize(): Blob {
+    if (!this.muxer) throw new Error("MP4 muxer session has not started.");
     const result = this.muxer.finalize();
-    return result instanceof Blob ? result : new Blob([result as BlobPart], { type: "video/mp4" });
+    return toMp4Blob(result);
+  }
+  mux(input: MuxerInput): Blob {
+    this.begin(input.metadata);
+    try {
+      for (const chunk of input.video) this.addVideoChunk(chunk);
+      for (const chunk of input.audio) this.addAudioChunk(chunk);
+      return this.finalize();
+    } catch (error) {
+      this.close();
+      throw error;
+    }
   }
   close() { this.muxer = undefined; }
+}
+
+function toMp4Blob(result: Blob | ArrayBuffer | Uint8Array): Blob {
+  return result instanceof Blob ? result : new Blob([result as BlobPart], { type: "video/mp4" });
 }
 
 export function createMp4MuxerFactory(policy?: CodecPolicy, MuxerCtor: any = Muxer): MuxerFactory {
   return (metadata) => {
     const selected = policy ?? metadata.codecPolicy ?? codecPolicy({ aspectRatio: "16:9", resolution: "720p", frameRate: metadata.frameRate as FrameRate });
     const targetRef = new ArrayBufferTarget();
-    const muxer = new MuxerCtor({ target: targetRef, video: { codec: selected.video.containerCodec, width: metadata.width, height: metadata.height, frameRate: metadata.frameRate }, ...(metadata.hasAudio ? { audio: { codec: selected.audio.containerCodec, sampleRate: selected.audio.sampleRate, numberOfChannels: selected.audio.numberOfChannels } } : {}), fastStart: "in-memory", firstTimestampBehavior: "offset" });
+    // Fast-start in-memory keeps every media chunk again for a second pass.
+    // Metadata-at-end is still a regular playable MP4 and lets ArrayBufferTarget
+    // append chunks without the extra fast-start bookkeeping peak.
+    const muxer = new MuxerCtor({ target: targetRef, video: { codec: selected.video.containerCodec, width: metadata.width, height: metadata.height, frameRate: metadata.frameRate }, ...(metadata.hasAudio ? { audio: { codec: selected.audio.containerCodec, sampleRate: selected.audio.sampleRate, numberOfChannels: selected.audio.numberOfChannels } } : {}), fastStart: false, firstTimestampBehavior: "offset" });
     return {
       addVideoChunk: (chunk) => muxer.addVideoChunkRaw(chunk.data, chunk.type, chunk.timestamp, chunk.duration ?? 1_000_000 / metadata.frameRate, chunk.metadata as any),
       addAudioChunk: (chunk) => muxer.addAudioChunkRaw(chunk.data, chunk.type, chunk.timestamp, chunk.duration ?? 1024 * 1_000_000 / 48_000, chunk.metadata as any),

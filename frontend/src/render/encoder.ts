@@ -4,44 +4,55 @@ import type { OutputConfig } from "./types";
 
 export interface EncodedChunk { type: "key" | "delta"; timestamp: number; duration?: number; data: Uint8Array; metadata?: unknown; }
 export interface EncoderOutput { video: EncodedChunk[]; audio: EncodedChunk[]; }
+export interface EncoderChunkSink { video?: (chunk: EncodedChunk) => void; audio?: (chunk: EncodedChunk) => void; }
 
 type EncoderCtor = new (init: { output: (chunk: unknown, metadata?: unknown) => void; error: (error: DOMException) => void }) => { configure(config: unknown): void; encode(frame: unknown, options?: unknown): void; flush(): Promise<void>; close(): void };
-type EncoderInstance = { configure(config: unknown): void; encode(frame: unknown, options?: unknown): void; flush(): Promise<void>; close(): void };
+type EncoderInstance = { configure(config: unknown): void; encode(frame: unknown, options?: unknown): void; flush(): Promise<void>; close(): void; encodeQueueSize?: number };
+
+const MAX_ENCODER_QUEUE = 4;
 
 export class WebCodecsEncoderAdapter {
   private videoEncoder?: EncoderInstance;
   private audioEncoder?: EncoderInstance;
   private readonly output: EncoderOutput = { video: [], audio: [] };
+  private videoChunkCount = 0;
+  private audioChunkCount = 0;
   private videoError?: Error;
   private audioError?: Error;
 
   private readonly policy: CodecPolicy;
-  constructor(outputConfig: OutputConfig, private readonly env: CapabilityEnvironment = {}, policy?: CodecPolicy) { this.policy = policy ?? codecPolicy(outputConfig); }
+  constructor(outputConfig: OutputConfig, private readonly env: CapabilityEnvironment = {}, policy?: CodecPolicy, private readonly sink: EncoderChunkSink = {}) { this.policy = policy ?? codecPolicy(outputConfig); }
 
   async configure(): Promise<void> {
     const videoCtor = this.env.videoEncoder ?? globalThis.VideoEncoder as unknown as EncoderCtor | undefined;
     const audioCtor = this.env.audioEncoder ?? globalThis.AudioEncoder as unknown as EncoderCtor | undefined;
     if (!videoCtor || !audioCtor) throw new Error("WebCodecs video and audio encoders are unavailable.");
     const policy = this.policy;
-    this.videoEncoder = new videoCtor({ output: (chunk: any, metadata?: unknown) => this.output.video.push(readChunk(chunk, metadata)), error: (error) => { this.videoError = error; } });
-    this.audioEncoder = new audioCtor({ output: (chunk: any, metadata?: unknown) => this.output.audio.push(readChunk(chunk, metadata)), error: (error) => { this.audioError = error; } });
+    this.videoEncoder = new videoCtor({ output: (chunk: any, metadata?: unknown) => this.handleChunk("video", chunk, metadata), error: (error) => { this.videoError = error; } });
+    this.audioEncoder = new audioCtor({ output: (chunk: any, metadata?: unknown) => this.handleChunk("audio", chunk, metadata), error: (error) => { this.audioError = error; } });
     this.videoEncoder.configure(policy.video); this.audioEncoder.configure(policy.audio);
   }
 
-  encodeVideo(frame: unknown, keyFrame = false) {
+  async encodeVideo(frame: unknown, keyFrame = false, shouldCancel: () => boolean = () => false): Promise<boolean> {
     if (this.videoError) throw this.videoError;
     if (!this.videoEncoder) throw new Error("Encoder has not been configured.");
+    if (!await waitForQueueCapacity(this.videoEncoder, shouldCancel, () => this.videoError)) return false;
+    if (this.videoError) throw this.videoError;
     this.videoEncoder.encode(frame, { keyFrame });
+    return true;
   }
 
-  encodeAudio(audio: unknown) {
+  async encodeAudio(audio: unknown, shouldCancel: () => boolean = () => false): Promise<boolean> {
     if (this.audioError) throw this.audioError;
     if (!this.audioEncoder) throw new Error("Encoder has not been configured.");
+    if (!await waitForQueueCapacity(this.audioEncoder, shouldCancel, () => this.audioError)) return false;
+    if (this.audioError) throw this.audioError;
     this.audioEncoder.encode(audio);
+    return true;
   }
 
   /** Encode transient PCM blocks into AAC. AudioData is never returned or persisted. */
-  encodeAudioBuffer(buffer: AudioBuffer, blockFrames = 1024) {
+  async encodeAudioBuffer(buffer: AudioBuffer, blockFrames = 1024) {
     const AudioDataCtor = (globalThis as any).AudioData;
     if (!AudioDataCtor) throw new Error("AudioData is unavailable in this browser.");
     if (!this.audioEncoder) throw new Error("Encoder has not been configured.");
@@ -50,7 +61,7 @@ export class WebCodecsEncoderAdapter {
       const frames = Math.min(blockFrames, buffer.length - offset); const samples = new Float32Array(frames * channels);
       for (let channel = 0; channel < channels; channel++) samples.set(buffer.getChannelData(channel).subarray(offset, offset + frames), channel * frames);
       const audioData = new AudioDataCtor({ format: "f32-planar", sampleRate, numberOfFrames: frames, numberOfChannels: channels, timestamp: offset * 1_000_000 / sampleRate, data: samples });
-      try { this.encodeAudio(audioData); } finally { audioData.close?.(); }
+      try { await this.encodeAudio(audioData); } finally { audioData.close?.(); }
     }
   }
 
@@ -84,7 +95,9 @@ export class WebCodecsEncoderAdapter {
         }
       }
       const audioData = new AudioDataCtor({ format: "f32-planar", sampleRate: targetRate, numberOfFrames: frames, numberOfChannels: 2, timestamp: offset * 1_000_000 / targetRate, data: samples });
-      try { this.encodeAudio(audioData); } finally { audioData.close?.(); }
+      try {
+        if (!await this.encodeAudio(audioData, shouldCancel)) return false;
+      } finally { audioData.close?.(); }
       if ((offset / blockFrames) % 32 === 31) await yieldToEventLoop();
     }
     return true;
@@ -94,17 +107,48 @@ export class WebCodecsEncoderAdapter {
     if (this.videoEncoder) await this.videoEncoder.flush();
     if (this.audioEncoder) await this.audioEncoder.flush();
     if (this.videoError || this.audioError) throw this.videoError ?? this.audioError;
-    return { video: this.output.video.slice(), audio: this.output.audio.slice() };
+    return { video: this.output.video.splice(0), audio: this.output.audio.splice(0) };
   }
 
-  close() { try { this.videoEncoder?.close(); } finally { this.audioEncoder?.close(); this.videoEncoder = undefined; this.audioEncoder = undefined; } }
+  close() { try { this.videoEncoder?.close(); } finally { this.audioEncoder?.close(); this.videoEncoder = undefined; this.audioEncoder = undefined; this.output.video.length = 0; this.output.audio.length = 0; } }
+
+  get counts() { return { video: this.videoChunkCount, audio: this.audioChunkCount }; }
+
+  private handleChunk(kind: "video" | "audio", chunk: any, metadata?: unknown): void {
+    const encoded = readChunk(chunk, metadata);
+    if (kind === "video") {
+      this.videoChunkCount++;
+      try { if (this.sink.video) this.sink.video(encoded); else this.output.video.push(encoded); }
+      catch (error) { this.videoError = asError(error); }
+    } else {
+      this.audioChunkCount++;
+      try { if (this.sink.audio) this.sink.audio(encoded); else this.output.audio.push(encoded); }
+      catch (error) { this.audioError = asError(error); }
+    }
+  }
 }
 
 function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+async function waitForQueueCapacity(encoder: EncoderInstance, shouldCancel: () => boolean, getError: () => Error | undefined): Promise<boolean> {
+  while ((encoder.encodeQueueSize ?? 0) >= MAX_ENCODER_QUEUE) {
+    const error = getError();
+    if (error) throw error;
+    if (shouldCancel()) return false;
+    await yieldToEventLoop();
+  }
+  const error = getError();
+  if (error) throw error;
+  return !shouldCancel();
+}
+
 function readChunk(chunk: any, metadata?: unknown): EncodedChunk {
   const data = new Uint8Array(chunk.byteLength); chunk.copyTo(data);
   return { type: chunk.type === "key" ? "key" : "delta", timestamp: Number(chunk.timestamp ?? 0), duration: chunk.duration == null ? undefined : Number(chunk.duration), data, metadata };
+}
+
+function asError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
 }

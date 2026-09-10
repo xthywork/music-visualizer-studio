@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyzeAudioBuffer, analyzePcmAudioSnapshot, pcmSnapshotFromAudioBuffer, pcmSnapshotTransferables, type PcmAudioSnapshot } from "../src/render/audio-analysis";
+import { analyzeAudioBuffer, analyzePcmAudioSnapshot, pcmSnapshotFromAudioBuffer, pcmSnapshotTransferables, releasePcmAudioSnapshot, type PcmAudioSnapshot } from "../src/render/audio-analysis";
 import { codecPolicy, detectCapabilities } from "../src/render/capabilities";
 import { createRenderTiming } from "../src/render/renderer";
 import { createScene, TEMPLATE_IDS } from "../src/render/scenes";
@@ -34,6 +34,13 @@ describe("render configuration and timing", () => {
     const source: PcmAudioSnapshot = { duration: 1, sampleRate: 48_000, numberOfChannels: 1, channels: [new Float32Array([0, 1])] }; const snapshot = freezeSnapshot({ type: "start", jobId: "x", snapshot: { config, audio: source, duration: 1 } });
     expect(Object.isFrozen(snapshot)).toBe(true); expect(snapshot.snapshot.audio).not.toBe(source); expect(snapshot.snapshot.audio.channels[0]).not.toBe(source.channels[0]); expect(snapshot.snapshot.config).not.toBe(config);
   });
+  it("can freeze the worker request without a second PCM allocation", () => {
+    const source: PcmAudioSnapshot = { duration: 1, sampleRate: 48_000, numberOfChannels: 1, channels: [new Float32Array([0, 1])] };
+    const snapshot = freezeSnapshot({ type: "start", jobId: "x", snapshot: { config, audio: source, duration: 1 } }, { copyAudio: false });
+    expect(snapshot.snapshot.audio).toBe(source);
+    releasePcmAudioSnapshot(source);
+    expect(source.channels).toHaveLength(0);
+  });
 });
 
 describe("MP4 mux boundary", () => {
@@ -52,7 +59,21 @@ describe("MP4 mux boundary", () => {
     const policy = codecPolicy(config.output, "vp9-opus", "no-preference");
     const muxer = createMp4MuxerFactory(policy, FakeMuxer as any)({ width: 1280, height: 720, frameRate: 30, duration: 1, hasAudio: true, hasVideo: true });
     muxer.addVideoChunk({ type: "key", timestamp: 0, data: new Uint8Array([1]) }); muxer.addAudioChunk({ type: "key", timestamp: 0, data: new Uint8Array([1]) }); muxer.finalize();
-    expect(options.video.codec).toBe("vp9"); expect(options.audio.codec).toBe("opus");
+    expect(options.video.codec).toBe("vp9"); expect(options.audio.codec).toBe("opus"); expect(options.fastStart).toBe(false);
+  });
+  it("accepts chunks incrementally before finalizing one output Blob", () => {
+    const received: string[] = [];
+    const adapter = new Mp4MuxerAdapter(() => ({
+      addVideoChunk: () => received.push("video"),
+      addAudioChunk: () => received.push("audio"),
+      finalize: () => new Uint8Array([1, 2, 3]),
+    }));
+    adapter.begin({ width: 320, height: 180, frameRate: 30, duration: 1, hasAudio: true, hasVideo: true });
+    adapter.addVideoChunk({ type: "key", timestamp: 0, data: new Uint8Array([1]) });
+    adapter.addAudioChunk({ type: "key", timestamp: 0, data: new Uint8Array([2]) });
+    expect(received).toEqual(["video", "audio"]);
+    expect(adapter.finalize()).toBeInstanceOf(Blob);
+    adapter.close();
   });
 });
 

@@ -146,6 +146,34 @@ describe("worker cancellation and runtime failures", () => {
     adapter.close();
   });
 
+  it("streams encoded chunks to a sink instead of retaining the whole output", async () => {
+    const chunks: string[] = [];
+    class StreamingEncoder {
+      private readonly output: (chunk: unknown, metadata?: unknown) => void;
+      constructor(init: { output: (chunk: unknown, metadata?: unknown) => void }) { this.output = init.output; }
+      configure(): void {}
+      encode(): void { this.output({ type: "key", timestamp: 0, duration: 1, byteLength: 1, copyTo: (target: Uint8Array) => { target[0] = 7; } }); }
+      async flush(): Promise<void> {}
+      close(): void {}
+    }
+    const adapter = new WebCodecsEncoderAdapter(renderConfig.output, {
+      videoEncoder: StreamingEncoder as unknown as typeof VideoEncoder,
+      audioEncoder: StreamingEncoder as unknown as typeof AudioEncoder,
+    }, undefined, {
+      video: (chunk) => chunks.push(`video:${chunk.data[0]}`),
+      audio: (chunk) => chunks.push(`audio:${chunk.data[0]}`),
+    });
+    await adapter.configure();
+    await adapter.encodeVideo({}, true);
+    await adapter.encodeAudio({});
+    const output = await adapter.flush();
+    expect(chunks).toEqual(["video:7", "audio:7"]);
+    expect(output.video).toHaveLength(0);
+    expect(output.audio).toHaveLength(0);
+    expect(adapter.counts).toEqual({ video: 1, audio: 1 });
+    adapter.close();
+  });
+
   it("keeps analysis buffers bounded for memory-constrained sessions", () => {
     const analysis = analyzePcmAudioSnapshot({
       duration: 60,
