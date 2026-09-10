@@ -57,10 +57,9 @@ A project record includes:
 - Render status and error information
 - Generated MP4 metadata and local reference
 
-The original audio bytes and absolute path are never part of a persisted project
-record. The record may retain sanitized source metadata, while supported
-browsers may store a permission-controlled File System Access handle in a
-separate IndexedDB store so the user can reconnect the original file.
+The original audio bytes, file metadata, absolute path, and file handle are
+never part of a persisted project record. Reopening a project requires selecting
+the source audio again.
 
 ## Non-goals for the MVP
 

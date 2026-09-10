@@ -10,17 +10,14 @@ import {
   type StorageEstimate,
   StorageQuotaError,
   type StoredOutput,
-  type FileSystemFileHandleLike,
-  type StoredAudioHandle,
   isActiveRender,
   normalizeStoredOutput,
 } from "./types";
 
 const DEFAULT_DATABASE_NAME = "music-visualizer";
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 3;
 const PROJECTS_STORE = "projects";
 const OUTPUTS_STORE = "outputs";
-const AUDIO_HANDLES_STORE = "audioHandles";
 
 interface StoredProject {
   readonly id: string;
@@ -64,32 +61,12 @@ export class IndexedDbProjectStorage implements ProjectStorage {
 
   async deleteProject(projectId: string): Promise<void> {
     const db = await this.database();
-    const transaction = db.transaction([PROJECTS_STORE, OUTPUTS_STORE, AUDIO_HANDLES_STORE], "readwrite");
+    const transaction = db.transaction([PROJECTS_STORE, OUTPUTS_STORE], "readwrite");
     transaction.objectStore(PROJECTS_STORE).delete(projectId);
     const outputStore = transaction.objectStore(OUTPUTS_STORE);
     const index = outputStore.index("projectId");
     await cursorDelete(index.openCursor(IDBKeyRange.only(projectId)), outputStore);
-    transaction.objectStore(AUDIO_HANDLES_STORE).delete(projectId);
     await transactionDone(transaction);
-  }
-
-  async saveAudioHandle(projectId: string, handle: FileSystemFileHandleLike): Promise<void> {
-    const db = await this.database();
-    try {
-      await request(db.transaction(AUDIO_HANDLES_STORE, "readwrite").objectStore(AUDIO_HANDLES_STORE).put({ projectId, handle } satisfies StoredAudioHandle));
-    } catch (error) {
-      throw asStorageError(error);
-    }
-  }
-
-  async getAudioHandle(projectId: string): Promise<StoredAudioHandle | undefined> {
-    const db = await this.database();
-    return request<StoredAudioHandle | undefined>(db.transaction(AUDIO_HANDLES_STORE, "readonly").objectStore(AUDIO_HANDLES_STORE).get(projectId));
-  }
-
-  async deleteAudioHandle(projectId: string): Promise<void> {
-    const db = await this.database();
-    await request(db.transaction(AUDIO_HANDLES_STORE, "readwrite").objectStore(AUDIO_HANDLES_STORE).delete(projectId));
   }
 
   async saveOutput(output: StoredOutput): Promise<void> {
@@ -174,8 +151,8 @@ export class IndexedDbProjectStorage implements ProjectStorage {
           const outputs = db.createObjectStore(OUTPUTS_STORE, { keyPath: "id" });
           outputs.createIndex("projectId", "projectId", { unique: false });
         }
-        // Version 2 adds handles without touching existing project/output data.
-        if (!db.objectStoreNames.contains(AUDIO_HANDLES_STORE)) db.createObjectStore(AUDIO_HANDLES_STORE, { keyPath: "projectId" });
+        // Version 3 removes the experimental File System Access handle store.
+        if (db.objectStoreNames.contains("audioHandles")) db.deleteObjectStore("audioHandles");
       };
       requestOpen.onsuccess = () => resolve(requestOpen.result);
       requestOpen.onerror = () => reject(requestOpen.error ?? new Error("Unable to open IndexedDB"));

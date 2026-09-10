@@ -13,13 +13,8 @@ import {
   DOMAIN_SCHEMA_VERSION,
   type ProjectRecord,
   type RenderConfiguration,
-  type SourceAudioMetadata,
 } from "./domain";
 import {
-  hasFileSystemAccessPicker,
-  pickAudioSource,
-  sourceAudioMetadataFromFile,
-  type FileSystemFileHandleLike,
   IndexedDbProjectStorage,
 } from "./storage";
 import { ProjectService } from "./ui/project-service";
@@ -41,9 +36,6 @@ interface DraftState {
   duration: number | null;
   coverUrl: string | null;
   backgroundUrl: string | null;
-  sourceAudioMetadata?: SourceAudioMetadata;
-  sourceAudioHandle?: FileSystemFileHandleLike;
-  sourceSelectionDirty: boolean;
 }
 
 const state: DraftState = {
@@ -57,7 +49,6 @@ const state: DraftState = {
   duration: null,
   coverUrl: null,
   backgroundUrl: null,
-  sourceSelectionDirty: false,
 };
 
 const previewAssets: { cover: HTMLImageElement | null; background: HTMLImageElement | null } = {
@@ -102,9 +93,7 @@ app.innerHTML = `
         <section class="panel"><div class="panel-body">
           <div class="section">
             <div class="section-title"><h2>1. 選擇音訊</h2><span>MP3 · WAV · M4A · 最長 10 分鐘</span></div>
-            <label class="dropzone"><input id="audio-input" type="file" accept=".mp3,.wav,.m4a,audio/mpeg,audio/wav,audio/mp4" /><span class="upload-icon">♪</span><strong>點擊選擇音訊</strong><small>檔案只在目前的瀏覽器工作階段中使用</small></label>
-            <button class="secondary audio-picker" id="audio-picker" type="button" hidden>使用檔案系統選擇</button>
-            <button class="secondary audio-reconnect" id="audio-reconnect" type="button" hidden>重新連結／載入音訊</button>
+            <label class="dropzone" id="audio-dropzone"><input id="audio-input" type="file" accept=".mp3,.wav,.m4a,audio/mpeg,audio/wav,audio/mp4" /><span class="upload-icon">♪</span><strong>拖曳音訊或點擊選擇</strong><small>檔案只在目前的瀏覽器工作階段中使用</small></label>
             <p class="file-status" id="file-status">尚未選擇音訊</p>
           </div>
           <div class="section">
@@ -116,8 +105,8 @@ app.innerHTML = `
             <div class="fields">
               <label class="field">歌名<input id="title-input" value="${state.title}" maxlength="80" /></label>
               <label class="field">藝人<input id="artist-input" value="${state.artist}" maxlength="80" /></label>
-              <label class="field">封面圖<span class="file-button"><span id="cover-name">選擇圖片</span><input id="cover-input" type="file" accept="image/png,image/jpeg,image/webp" /></span></label>
-              <label class="field">背景圖<span class="file-button"><span id="background-name">選擇圖片</span><input id="background-input" type="file" accept="image/png,image/jpeg,image/webp" /></span></label>
+              <div class="field image-field"><span>封面圖</span><label class="image-dropzone" id="cover-dropzone"><input id="cover-input" type="file" accept="image/png,image/jpeg,image/webp" /><span class="image-preview" id="cover-preview"><span class="image-placeholder">＋</span><img id="cover-preview-image" alt="封面圖預覽" hidden /></span><span class="image-drop-copy"><strong>拖曳或點擊選擇</strong><small id="cover-name">尚未選擇圖片</small></span></label><button class="image-remove" id="cover-remove" type="button" hidden>移除封面圖</button></div>
+              <div class="field image-field"><span>背景圖</span><label class="image-dropzone" id="background-dropzone"><input id="background-input" type="file" accept="image/png,image/jpeg,image/webp" /><span class="image-preview" id="background-preview"><span class="image-placeholder">＋</span><img id="background-preview-image" alt="背景圖預覽" hidden /></span><span class="image-drop-copy"><strong>拖曳或點擊選擇</strong><small id="background-name">尚未選擇圖片</small></span></label><button class="image-remove" id="background-remove" type="button" hidden>移除背景圖</button></div>
             </div>
           </div>
           <div class="section">
@@ -157,8 +146,6 @@ const cancelButton = document.querySelector<HTMLButtonElement>("#cancel-button")
 const renderStatus = document.querySelector<HTMLSpanElement>("#render-status")!;
 const progressValue = document.querySelector<HTMLSpanElement>("#progress-value")!;
 const progressBar = document.querySelector<HTMLDivElement>("#progress-bar")!;
-const audioPickerButton = document.querySelector<HTMLButtonElement>("#audio-picker")!;
-const audioReconnectButton = document.querySelector<HTMLButtonElement>("#audio-reconnect")!;
 
 function renderTemplateCards(): void {
   templatesElement.innerHTML = TEMPLATES.map((template) => `
@@ -199,7 +186,6 @@ function configurationFromState(): RenderConfiguration {
     text: { title: state.title, artist: state.artist },
     ...(state.coverUrl ? { coverImage: { kind: "data-url" as const, value: state.coverUrl, alt: "Cover art" } } : {}),
     ...(state.backgroundUrl ? { backgroundImage: { kind: "data-url" as const, value: state.backgroundUrl, alt: "Background" } } : {}),
-    ...(state.sourceAudioMetadata ? { sourceAudio: state.sourceAudioMetadata } : {}),
     output: {
       aspectRatio: state.aspectRatio,
       width: preset.width,
@@ -222,10 +208,6 @@ async function saveProject(): Promise<ProjectRecord> {
   const project = currentProjectId
     ? await projectService.updateProject(currentProjectId, configuration, name)
     : await projectService.createProject(name, configuration);
-  if (state.sourceSelectionDirty && state.sourceAudioMetadata) {
-    await projectService.attachAudioSource(project.id, state.sourceAudioMetadata, state.sourceAudioHandle);
-    state.sourceSelectionDirty = false;
-  }
   currentProjectId = project.id;
   await refreshProjects();
   return project;
@@ -263,17 +245,18 @@ async function openProject(projectId: string): Promise<void> {
   const preset = OUTPUT_PRESETS[state.aspectRatio].find((item) => item.width === config.output.width && item.height === config.output.height);
   state.presetId = preset?.id ?? OUTPUT_PRESETS[state.aspectRatio][0].id;
   state.audioFile = null; state.duration = null;
-  state.sourceAudioMetadata = config.sourceAudio;
-  state.sourceAudioHandle = undefined;
-  state.sourceSelectionDirty = false;
+  document.querySelector<HTMLInputElement>("#audio-input")!.value = "";
   state.coverUrl = config.coverImage?.value ?? null; state.backgroundUrl = config.backgroundImage?.value ?? null;
   previewAssets.cover = state.coverUrl ? await loadPreviewImage(state.coverUrl).catch(() => null) : null;
   previewAssets.background = state.backgroundUrl ? await loadPreviewImage(state.backgroundUrl).catch(() => null) : null;
+  updateImagePicker("coverUrl", previewAssets.cover, config.coverImage ? "已保存封面圖" : undefined);
+  updateImagePicker("backgroundUrl", previewAssets.background, config.backgroundImage ? "已保存背景圖" : undefined);
+  document.querySelector<HTMLInputElement>("#cover-input")!.value = "";
+  document.querySelector<HTMLInputElement>("#background-input")!.value = "";
   document.querySelector<HTMLInputElement>("#title-input")!.value = state.title;
   document.querySelector<HTMLInputElement>("#artist-input")!.value = state.artist;
   renderButton.disabled = true;
-  audioReconnectButton.hidden = !config.sourceAudio || !hasFileSystemAccessPicker();
-  setFileStatus(config.sourceAudio ? `已保存來源：${config.sourceAudio.filename}；重新生成前請再次載入。` : "重新生成前請再次選擇原始音訊。");
+  setFileStatus("重新生成前請再次選擇原始音訊。");
   renderTemplateCards(); populateOutputControls(); updateOutputLabels();
   await showLatestOutput(project);
 }
@@ -309,11 +292,14 @@ function clearOutputPreview(): void {
 function resetDraft(): void {
   currentProjectId = null; state.templateId = "spectrum-cover"; state.aspectRatio = "16:9"; state.presetId = "16-9-1080p"; state.frameRate = 30;
   state.title = "Midnight Signal"; state.artist = "Your Artist"; state.audioFile = null; state.duration = null; state.coverUrl = null; state.backgroundUrl = null;
-  state.sourceAudioMetadata = undefined; state.sourceAudioHandle = undefined; state.sourceSelectionDirty = false;
+  document.querySelector<HTMLInputElement>("#audio-input")!.value = "";
   previewAssets.cover = null; previewAssets.background = null;
+  updateImagePicker("coverUrl", null);
+  updateImagePicker("backgroundUrl", null);
+  document.querySelector<HTMLInputElement>("#cover-input")!.value = "";
+  document.querySelector<HTMLInputElement>("#background-input")!.value = "";
   document.querySelector<HTMLInputElement>("#title-input")!.value = state.title; document.querySelector<HTMLInputElement>("#artist-input")!.value = state.artist;
   renderButton.disabled = true; document.querySelector<HTMLDivElement>("#output-actions")!.hidden = true; clearOutputPreview();
-  audioReconnectButton.hidden = true;
   setFileStatus("尚未選擇音訊"); renderTemplateCards(); populateOutputControls(); updateOutputLabels();
 }
 
@@ -444,7 +430,6 @@ async function finishRenderSession(message: string, completed: boolean): Promise
   state.duration = null;
   document.querySelector<HTMLInputElement>("#audio-input")!.value = "";
   cancelButton.hidden = true;
-  audioReconnectButton.hidden = !state.sourceAudioMetadata || !hasFileSystemAccessPicker();
   renderButton.disabled = true;
   setRenderProgress(completed ? 1 : 0, message);
   setFileStatus("來源音訊已從工作階段釋放；重新生成時請再次選擇。", completed ? "success" : "");
@@ -508,7 +493,7 @@ function setFileStatus(message: string, kind = ""): void {
   element.textContent = message; element.className = `file-status ${kind}`;
 }
 
-async function inspectAudio(file: File, handle?: FileSystemFileHandleLike): Promise<void> {
+async function inspectAudio(file: File): Promise<void> {
   const problem = validateAudioFile(file);
   if (problem) { state.audioFile = null; renderButton.disabled = true; setFileStatus(problem, "error"); return; }
   const url = URL.createObjectURL(file);
@@ -521,10 +506,6 @@ async function inspectAudio(file: File, handle?: FileSystemFileHandleLike): Prom
     const durationProblem = validateAudioDuration(duration);
     if (durationProblem) throw new Error(durationProblem);
     state.audioFile = file; state.duration = duration;
-    state.sourceAudioMetadata = sourceAudioMetadataFromFile(file);
-    state.sourceAudioHandle = handle;
-    state.sourceSelectionDirty = true;
-    audioReconnectButton.hidden = true;
     renderButton.disabled = false;
     setFileStatus(`${file.name} · ${formatBytes(file.size)} · ${Math.floor(duration / 60)}:${String(Math.round(duration % 60)).padStart(2, "0")}`, "success");
     await refreshCapability();
@@ -550,52 +531,107 @@ function loadPreviewImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-function attachImageInput(id: string, nameId: string, target: "coverUrl" | "backgroundUrl"): void {
-  document.querySelector<HTMLInputElement>(id)!.addEventListener("change", async (event) => {
-    const file = (event.target as HTMLInputElement).files?.[0]; if (!file) return;
+type ImageTarget = "coverUrl" | "backgroundUrl";
+
+function imagePickerIds(target: ImageTarget): { dropzone: string; input: string; preview: string; name: string; remove: string } {
+  return target === "coverUrl"
+    ? { dropzone: "#cover-dropzone", input: "#cover-input", preview: "#cover-preview", name: "#cover-name", remove: "#cover-remove" }
+    : { dropzone: "#background-dropzone", input: "#background-input", preview: "#background-preview", name: "#background-name", remove: "#background-remove" };
+}
+
+function updateImagePicker(target: ImageTarget, image: HTMLImageElement | null, filename?: string): void {
+  const ids = imagePickerIds(target);
+  const preview = document.querySelector<HTMLSpanElement>(ids.preview);
+  const imageElement = document.querySelector<HTMLImageElement>(`${ids.preview}-image`);
+  const placeholder = preview?.querySelector<HTMLSpanElement>(".image-placeholder");
+  const name = document.querySelector<HTMLElement>(ids.name);
+  const remove = document.querySelector<HTMLButtonElement>(ids.remove);
+  if (!preview || !imageElement || !placeholder || !name || !remove) return;
+  if (image) {
+    imageElement.src = image.src;
+    imageElement.hidden = false;
+    placeholder.hidden = true;
+    preview.classList.add("has-image");
+    name.textContent = filename ?? "已選擇圖片";
+    remove.hidden = false;
+  } else {
+    imageElement.removeAttribute("src");
+    imageElement.hidden = true;
+    placeholder.hidden = false;
+    preview.classList.remove("has-image");
+    name.textContent = "尚未選擇圖片";
+    remove.hidden = true;
+  }
+}
+
+function attachImageInput(target: ImageTarget): void {
+  const ids = imagePickerIds(target);
+  const input = document.querySelector<HTMLInputElement>(ids.input)!;
+  const dropzone = document.querySelector<HTMLElement>(ids.dropzone)!;
+  const remove = document.querySelector<HTMLButtonElement>(ids.remove)!;
+  const applyFile = async (file: File): Promise<void> => {
+    if (!file.type.startsWith("image/")) {
+      setFileStatus("請選擇 PNG、JPEG 或 WebP 圖片。", "error");
+      return;
+    }
     try {
       const dataUrl = await readDataUrl(file);
-      state[target] = dataUrl;
       const image = await loadPreviewImage(dataUrl);
+      state[target] = dataUrl;
       if (target === "coverUrl") previewAssets.cover = image; else previewAssets.background = image;
-      document.querySelector(nameId)!.textContent = file.name;
+      updateImagePicker(target, image, file.name);
       drawPreview(performance.now() / 1000);
       scheduleProjectSave();
     } catch (error) {
       setFileStatus(error instanceof Error ? error.message : "無法讀取圖片。", "error");
     }
+  };
+  input.addEventListener("change", () => {
+    const file = input.files?.[0];
+    if (file) void applyFile(file);
+  });
+  ["dragenter", "dragover"].forEach((eventName) => dropzone.addEventListener(eventName, (event) => {
+    event.preventDefault();
+    dropzone.classList.add("dragging");
+  }));
+  ["dragleave", "drop"].forEach((eventName) => dropzone.addEventListener(eventName, (event) => {
+    event.preventDefault();
+    dropzone.classList.remove("dragging");
+  }));
+  dropzone.addEventListener("drop", (event) => {
+    const file = (event as DragEvent).dataTransfer?.files?.[0];
+    if (file) void applyFile(file);
+  });
+  remove.addEventListener("click", () => {
+    state[target] = null;
+    if (target === "coverUrl") previewAssets.cover = null; else previewAssets.background = null;
+    input.value = "";
+    updateImagePicker(target, null);
+    drawPreview(performance.now() / 1000);
+    scheduleProjectSave();
   });
 }
 
 document.querySelector<HTMLInputElement>("#audio-input")!.addEventListener("change", (event) => {
   const file = (event.target as HTMLInputElement).files?.[0]; if (file) void inspectAudio(file);
 });
-audioPickerButton.hidden = !hasFileSystemAccessPicker();
-audioPickerButton.addEventListener("click", async () => {
-  try {
-    const selected = await pickAudioSource();
-    await inspectAudio(selected.file, selected.handle);
-  } catch (error) {
-    setFileStatus(error instanceof Error ? error.message : "無法開啟檔案選擇器。", "error");
-  }
-});
-audioReconnectButton.addEventListener("click", async () => {
-  if (!currentProjectId) return;
-  try {
-    const selected = await projectService.reopenAudioSource(currentProjectId);
-    if (selected) await inspectAudio(selected.file, selected.handle);
-    else {
-      const picked = await pickAudioSource();
-      await inspectAudio(picked.file, picked.handle);
-    }
-  } catch (error) {
-    setFileStatus(error instanceof Error ? error.message : "無法重新連結來源音訊；請使用檔案輸入。", "error");
-  }
+const audioDropzone = document.querySelector<HTMLElement>("#audio-dropzone")!;
+["dragenter", "dragover"].forEach((eventName) => audioDropzone.addEventListener(eventName, (event) => {
+  event.preventDefault();
+  audioDropzone.classList.add("dragging");
+}));
+["dragleave", "drop"].forEach((eventName) => audioDropzone.addEventListener(eventName, (event) => {
+  event.preventDefault();
+  audioDropzone.classList.remove("dragging");
+}));
+audioDropzone.addEventListener("drop", (event) => {
+  const file = (event as DragEvent).dataTransfer?.files?.[0];
+  if (file) void inspectAudio(file);
 });
 document.querySelector<HTMLInputElement>("#title-input")!.addEventListener("input", (event) => { state.title = (event.target as HTMLInputElement).value; drawPreview(performance.now() / 1000); scheduleProjectSave(); });
 document.querySelector<HTMLInputElement>("#artist-input")!.addEventListener("input", (event) => { state.artist = (event.target as HTMLInputElement).value; drawPreview(performance.now() / 1000); scheduleProjectSave(); });
-attachImageInput("#cover-input", "#cover-name", "coverUrl");
-attachImageInput("#background-input", "#background-name", "backgroundUrl");
+attachImageInput("coverUrl");
+attachImageInput("backgroundUrl");
 ratioSelect.addEventListener("change", () => { state.aspectRatio = ratioSelect.value as AspectRatio; updateResolutionOptions(); scheduleProjectSave(); });
 resolutionSelect.addEventListener("change", () => { state.presetId = resolutionSelect.value; updateOutputLabels(); scheduleProjectSave(); });
 fpsSelect.addEventListener("change", () => { state.frameRate = Number(fpsSelect.value); updateOutputLabels(); scheduleProjectSave(); });

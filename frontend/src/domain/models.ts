@@ -42,18 +42,10 @@ export interface TextConfiguration {
 }
 
 /** Safe source identity only; no bytes, path, File, or handle is persisted. */
-export interface SourceAudioMetadata {
-  readonly filename: string;
-  readonly size: number;
-  readonly lastModified: number;
-  readonly type: string;
-}
-
 export interface RenderConfigurationV1 {
   readonly schemaVersion: DomainSchemaVersion;
   readonly templateId: TemplateId;
   readonly text: TextConfiguration;
-  readonly sourceAudio?: SourceAudioMetadata;
   readonly coverImage?: ImageReference;
   readonly backgroundImage?: ImageReference;
   readonly output: OutputConfiguration;

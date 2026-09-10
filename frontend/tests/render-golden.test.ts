@@ -54,15 +54,15 @@ function renderSignature(template: TemplateId, aspectRatio: AspectRatio, time = 
 
 describe("low-resolution visualizer golden frames", () => {
   const golden: Record<string, string> = {
-    "spectrum-cover/16:9": "180x101:f5a5d66c",
-    "spectrum-cover/9:16": "101x180:434c2bdb",
-    "spectrum-cover/1:1": "180x180:8c0af5b3",
-    "vinyl-particle/16:9": "180x101:3bc5b6fa",
-    "vinyl-particle/9:16": "101x180:d98385df",
-    "vinyl-particle/1:1": "180x180:5101536",
-    "abstract-pulse/16:9": "180x101:8f38ed10",
-    "abstract-pulse/9:16": "101x180:98e78990",
-    "abstract-pulse/1:1": "180x180:5cfa7d76",
+    "spectrum-cover/16:9": "180x101:8d4df7c0",
+    "spectrum-cover/9:16": "101x180:eb96f543",
+    "spectrum-cover/1:1": "180x180:c73af8cd",
+    "vinyl-particle/16:9": "180x101:414fcb92",
+    "vinyl-particle/9:16": "101x180:e806019a",
+    "vinyl-particle/1:1": "180x180:b61f99e8",
+    "abstract-pulse/16:9": "180x101:e3978fd2",
+    "abstract-pulse/9:16": "101x180:716d1ac1",
+    "abstract-pulse/1:1": "180x180:7ad947d3",
   };
 
   for (const template of templates) {
@@ -85,5 +85,27 @@ describe("visual motion and cover treatment", () => {
     new VinylParticleScene({ coverImage: {} as ImageBitmap }).render(context, { time: .5, frame: 15, progress: .25, width: 180, height: 180, analysis });
     expect(calls.some(([name]) => name === "clip")).toBe(true);
     expect(calls.some(([name]) => name === "drawImage")).toBe(true);
+    const imageIndex = calls.findIndex(([name]) => name === "drawImage");
+    const lastRotate = calls.reduce((index, call, current) => call[0] === "rotate" ? current : index, -1);
+    const lastTranslate = calls.reduce((index, call, current) => call[0] === "translate" ? current : index, -1);
+    expect(lastTranslate).toBeGreaterThan(lastRotate);
+    expect(imageIndex).toBeGreaterThan(lastTranslate);
+    expect(calls.filter(([name]) => name === "arc").length).toBeGreaterThan(25);
+  });
+
+  it("builds Abstract Pulse from smooth bezier-like curves instead of concentric circles", () => {
+    const { context, calls } = recordingContext();
+    createScene("abstract-pulse").render(context, { time: .5, frame: 15, progress: .25, width: 180, height: 180, analysis });
+    expect(calls.filter(([name]) => name === "bezierCurveTo" || name === "quadraticCurveTo").length).toBeGreaterThan(5);
+  });
+
+  it("keeps Spectrum Cover artwork geometry stable while the scene animates", () => {
+    const image = {} as ImageBitmap;
+    const geometryAt = (time: number) => {
+      const { context, calls } = recordingContext();
+      createScene("spectrum-cover", { assets: { coverImage: image } }).render(context, { time, frame: Math.round(time * 30), progress: .25, width: 180, height: 101, analysis });
+      return calls.filter(([name]) => name === "drawImage").map((call) => call.slice(1));
+    };
+    expect(geometryAt(.1)).toEqual(geometryAt(.9));
   });
 });

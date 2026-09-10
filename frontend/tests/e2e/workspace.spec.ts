@@ -57,7 +57,7 @@ test("renders, stores, reopens, and downloads a local MP4", async ({ page }, tes
   await page.reload();
   await page.locator(".project-item", { hasText: "E2E Signal" }).click();
   await expect(page.locator("#output-actions")).toBeVisible();
-  await expect(page.locator("#file-status")).toContainText("已保存來源");
+  await expect(page.locator("#file-status")).toContainText("重新生成前請再次選擇原始音訊");
 
   const persisted = await page.evaluate(async () => {
     const request = indexedDB.open("music-visualizer");
@@ -70,9 +70,35 @@ test("renders, stores, reopens, and downloads a local MP4", async ({ page }, tes
       allRequest.onsuccess = () => resolve(JSON.stringify(allRequest.result)); allRequest.onerror = () => reject(allRequest.error);
     });
   });
-  expect(persisted).toMatch(/sourceAudio/);
-  expect(persisted).toMatch(/signal\.wav|audio\/wav/);
-  expect(persisted).not.toMatch(/path|audioBytes|sourceAudioBytes|audioFile|handle|getFile/);
+  expect(persisted).not.toMatch(/sourceAudio|signal\.wav|audio\/wav|path|audioBytes|sourceAudioBytes|audioFile|handle|getFile/);
+});
+
+test("accepts audio and artwork by drag and drop", async ({ page }) => {
+  const audioBase64 = wavFixture(.1).toString("base64");
+  const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+
+  await page.evaluate(({ audioBase64, pngBase64 }) => {
+    const decode = (value: string) => Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
+    const drop = (selector: string, file: File) => {
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      document.querySelector(selector)?.dispatchEvent(new DragEvent("drop", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: transfer,
+      }));
+    };
+    drop("#audio-dropzone", new File([decode(audioBase64)], "dropped.wav", { type: "audio/wav" }));
+    drop("#cover-dropzone", new File([decode(pngBase64)], "cover.png", { type: "image/png" }));
+    drop("#background-dropzone", new File([decode(pngBase64)], "background.png", { type: "image/png" }));
+  }, { audioBase64, pngBase64 });
+
+  await expect(page.locator("#file-status")).toContainText("dropped.wav");
+  await expect(page.locator("#render-button")).toBeEnabled();
+  await expect(page.locator("#cover-name")).toHaveText("cover.png");
+  await expect(page.locator("#background-name")).toHaveText("background.png");
+  await expect(page.locator("#cover-preview-image")).toBeVisible();
+  await expect(page.locator("#background-preview-image")).toBeVisible();
 });
 
 for (const preset of [

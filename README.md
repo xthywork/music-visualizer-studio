@@ -104,7 +104,7 @@ Browser
   v
 Web Worker -> Canvas/WebGL -> WebCodecs -> MP4 muxing
   |
-  +--> IndexedDB/local browser storage: project metadata, optional file handle, and generated MP4
+  +--> IndexedDB/local browser storage: project metadata and generated MP4
   +--> audio bytes: released after rendering and never copied into project storage
 
 FastAPI server
@@ -117,13 +117,10 @@ See [docs/architecture.md](docs/architecture.md) for the design rationale and th
 ## Privacy and MVP limitations
 
 Source audio is decoded in memory for the active render only. It is never sent
-to FastAPI or written to the server filesystem. A project may retain the safe
-filename metadata and, on supporting Chromium browsers, an IndexedDB-backed
-File System Access handle. The handle is only a permission-controlled reference
-to the user's original file; no audio bytes or absolute path are copied into the
-project record. The browser releases decoded audio after completion,
-cancellation, or failure. Project metadata, render history, handles, and
-generated MP4 Blobs remain local to the browser.
+to FastAPI or written to the server filesystem. Projects do not retain the
+source filename, metadata, absolute path, or file handle. The browser releases
+decoded audio after completion, cancellation, or failure. Project metadata,
+render history, and generated MP4 Blobs remain local to the browser.
 Users can delete an output while keeping its project configuration, or delete a
 project completely. Browser eviction, cleared site data, private browsing, or
 quota limits can remove local projects and outputs, so local storage is not a

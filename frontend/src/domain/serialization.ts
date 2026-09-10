@@ -5,7 +5,6 @@ import {
   type RenderConfiguration,
   type RenderError,
   type RenderRecord,
-  type SourceAudioMetadata,
   type TemplateId,
 } from "./models";
 
@@ -57,30 +56,6 @@ function positiveNumber(value: unknown, label: string): number {
   return value;
 }
 
-function nonNegativeInteger(value: unknown, label: string): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
-    return fail(`${label} must be a non-negative integer`);
-  }
-  return value;
-}
-
-function sourceAudio(value: unknown): SourceAudioMetadata | undefined {
-  if (value === undefined) return undefined;
-  const input = object(value, "configuration.sourceAudio");
-  const filename = stringValue(input.filename, "configuration.sourceAudio.filename");
-  // A path is never accepted as metadata. Keep only the final file component.
-  const safeFilename = filename.replaceAll("\\", "/").split("/").pop() ?? filename;
-  if (!safeFilename || safeFilename === "." || safeFilename === "..") {
-    return fail("configuration.sourceAudio.filename is invalid");
-  }
-  return {
-    filename: safeFilename,
-    size: nonNegativeInteger(input.size, "configuration.sourceAudio.size"),
-    lastModified: nonNegativeInteger(input.lastModified, "configuration.sourceAudio.lastModified"),
-    type: stringValue(input.type, "configuration.sourceAudio.type"),
-  };
-}
-
 function imageReference(value: unknown, label: string): ImageReference | undefined {
   if (value === undefined) return undefined;
   const input = object(value, label);
@@ -118,7 +93,6 @@ function configuration(value: unknown): RenderConfiguration {
       title: stringValue(text.title, "configuration.text.title"),
       artist: stringValue(text.artist, "configuration.text.artist"),
     },
-    ...(sourceAudio(input.sourceAudio) ? { sourceAudio: sourceAudio(input.sourceAudio) } : {}),
     ...(imageReference(input.coverImage, "configuration.coverImage")
       ? { coverImage: imageReference(input.coverImage, "configuration.coverImage") }
       : {}),
@@ -180,7 +154,7 @@ function renderRecord(value: unknown): RenderRecord {
 
 /**
  * Serialize by selecting known fields. This is intentionally a whitelist:
- * accidental `audio`, `sourceAudio`, or `audioFile` properties are discarded.
+ * accidental audio values are discarded.
  */
 export function serializeConfiguration(configurationValue: RenderConfiguration): string {
   const configurationValueChecked = configuration(configurationValue);

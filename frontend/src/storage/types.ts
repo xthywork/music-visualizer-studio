@@ -1,19 +1,5 @@
 import type { OutputMetadata, ProjectRecord, RenderRecord } from "../domain";
 
-/** Minimal structural type for File System Access handles (DOM lib support varies). */
-export interface FileSystemFileHandleLike {
-  readonly kind?: "file";
-  readonly name?: string;
-  getFile(): Promise<File>;
-  queryPermission?: (descriptor?: { mode: "read" }) => Promise<"granted" | "denied" | "prompt">;
-  requestPermission?: (descriptor?: { mode: "read" }) => Promise<"granted" | "denied" | "prompt">;
-}
-
-export interface StoredAudioHandle {
-  readonly projectId: string;
-  readonly handle: FileSystemFileHandleLike;
-}
-
 export const STORAGE_SCHEMA_VERSION = 1 as const;
 
 export interface StoredOutput {
@@ -50,10 +36,6 @@ export interface ProjectStorage {
   getProject(projectId: string): Promise<ProjectRecord | undefined>;
   saveProject(project: ProjectRecord): Promise<void>;
   deleteProject(projectId: string): Promise<void>;
-
-  saveAudioHandle(projectId: string, handle: FileSystemFileHandleLike): Promise<void>;
-  getAudioHandle(projectId: string): Promise<StoredAudioHandle | undefined>;
-  deleteAudioHandle(projectId: string): Promise<void>;
 
   saveOutput(output: StoredOutput): Promise<void>;
   getOutput(projectId: string, renderId: string): Promise<StoredOutput | undefined>;

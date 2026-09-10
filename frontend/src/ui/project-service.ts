@@ -8,13 +8,7 @@ import {
   type RenderRecord,
 } from "../domain";
 import {
-  fileFromAudioHandle,
-  sourceAudioMetadataFromFile,
-  type AudioSourceSelection,
-} from "../storage/audio-source";
-import {
   outputId,
-  type FileSystemFileHandleLike,
   StorageQuotaError,
   type ProjectStorage,
   type StoredOutput,
@@ -78,33 +72,6 @@ export class ProjectService {
     };
     await this.storage.saveProject(updated);
     return updated;
-  }
-
-  /** Saves source identity only; an optional File System Access handle is separate from project JSON. */
-  async attachAudioSource(
-    projectId: string,
-    metadata: RenderConfiguration["sourceAudio"],
-    handle?: FileSystemFileHandleLike,
-  ): Promise<ProjectRecord> {
-    if (!metadata) throw new TypeError("Audio source metadata is required");
-    const project = await this.requireProject(projectId);
-    const updated: ProjectRecord = {
-      ...project,
-      configuration: { ...project.configuration, sourceAudio: metadata },
-      updatedAt: this.now(),
-    };
-    await this.storage.saveProject(updated);
-    if (handle) await this.storage.saveAudioHandle(projectId, handle);
-    else await this.storage.deleteAudioHandle(projectId);
-    return updated;
-  }
-
-  /** Reopens an authorized local handle; callers can fall back to the file input on failure. */
-  async reopenAudioSource(projectId: string): Promise<AudioSourceSelection | undefined> {
-    const stored = await this.storage.getAudioHandle(projectId);
-    if (!stored) return undefined;
-    const file = await fileFromAudioHandle(stored.handle);
-    return { file, metadata: sourceAudioMetadataFromFile(file), handle: stored.handle };
   }
 
   async queueRender(projectId: string, renderId = this.createId()): Promise<RenderRecord> {
