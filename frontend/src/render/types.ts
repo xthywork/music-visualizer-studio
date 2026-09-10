@@ -2,7 +2,7 @@
 export type AspectRatio = "16:9" | "9:16" | "1:1";
 export type FrameRate = 24 | 25 | 30 | 50 | 60;
 export type Resolution = "720p" | "1080p" | "1440p" | "4k";
-export type TemplateId = "spectrum-cover" | "vinyl-particle" | "abstract-pulse";
+export type TemplateId = "spectrum-cover" | "vinyl-particle";
 
 export interface OutputConfig {
   aspectRatio: AspectRatio;

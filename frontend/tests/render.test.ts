@@ -161,7 +161,7 @@ describe("capability matrix", () => {
 });
 
 describe("templates and worker states", () => {
-  it("registers all initial template ids with deterministic scene calls", () => {
+  it("registers all supported template ids with deterministic scene calls", () => {
     const analysis = { duration: 1, sampleRate: 48_000, waveform: new Float32Array([0, .5, 1]), spectrum: new Float32Array([.2, .8]), beats: new Float32Array([.5]) };
     const gradient = { addColorStop() {} };
     const calls: string[] = [];

@@ -15,7 +15,6 @@ export class DomainSerializationError extends Error {
 const templateIds: ReadonlySet<TemplateId> = new Set([
   "spectrum-cover",
   "vinyl-particle",
-  "abstract-pulse",
 ]);
 const aspectRatios = new Set(["16:9", "9:16", "1:1"]);
 const frameRates = new Set([24, 25, 30, 50, 60]);
@@ -75,7 +74,11 @@ function configuration(value: unknown): RenderConfiguration {
   if (input.schemaVersion !== DOMAIN_SCHEMA_VERSION) {
     return fail("configuration.schemaVersion is unsupported");
   }
-  if (!templateIds.has(input.templateId as TemplateId)) {
+  // Projects saved by older builds may still refer to the removed template.
+  // Migrate that legacy value on read so one stale record cannot break the
+  // project list; the removed id is never accepted or written back.
+  const templateId = input.templateId === "abstract-pulse" ? "spectrum-cover" : input.templateId;
+  if (!templateIds.has(templateId as TemplateId)) {
     return fail("configuration.templateId is invalid");
   }
   const text = object(input.text, "configuration.text");
@@ -88,7 +91,7 @@ function configuration(value: unknown): RenderConfiguration {
   }
   return {
     schemaVersion: DOMAIN_SCHEMA_VERSION,
-    templateId: input.templateId as TemplateId,
+    templateId: templateId as TemplateId,
     text: {
       title: stringValue(text.title, "configuration.text.title"),
       artist: stringValue(text.artist, "configuration.text.artist"),

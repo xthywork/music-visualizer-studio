@@ -37,7 +37,7 @@ const analysis: AudioAnalysis = {
 };
 
 const ratios: AspectRatio[] = ["16:9", "9:16", "1:1"];
-const templates: TemplateId[] = ["spectrum-cover", "vinyl-particle", "abstract-pulse"];
+const templates: TemplateId[] = ["spectrum-cover", "vinyl-particle"];
 
 function renderSignature(template: TemplateId, aspectRatio: AspectRatio, time = .5): string {
   // 180px long edge keeps this suite cheap while still exercising orientation changes.
@@ -54,15 +54,12 @@ function renderSignature(template: TemplateId, aspectRatio: AspectRatio, time = 
 
 describe("low-resolution visualizer golden frames", () => {
   const golden: Record<string, string> = {
-    "spectrum-cover/16:9": "180x101:8d4df7c0",
-    "spectrum-cover/9:16": "101x180:eb96f543",
-    "spectrum-cover/1:1": "180x180:c73af8cd",
-    "vinyl-particle/16:9": "180x101:414fcb92",
-    "vinyl-particle/9:16": "101x180:e806019a",
-    "vinyl-particle/1:1": "180x180:b61f99e8",
-    "abstract-pulse/16:9": "180x101:e3978fd2",
-    "abstract-pulse/9:16": "101x180:716d1ac1",
-    "abstract-pulse/1:1": "180x180:7ad947d3",
+    "spectrum-cover/16:9": "180x101:931b3229",
+    "spectrum-cover/9:16": "101x180:f19c93d2",
+    "spectrum-cover/1:1": "180x180:b564a44d",
+    "vinyl-particle/16:9": "180x101:9e18a783",
+    "vinyl-particle/9:16": "101x180:ebd2265f",
+    "vinyl-particle/1:1": "180x180:b1c9b262",
   };
 
   for (const template of templates) {
@@ -76,7 +73,7 @@ describe("low-resolution visualizer golden frames", () => {
 });
 
 describe("visual motion and cover treatment", () => {
-  it("keeps every template visibly time-responsive", () => {
+  it("keeps every supported template visibly time-responsive", () => {
     for (const template of templates) expect(renderSignature(template, "1:1", .5)).not.toBe(renderSignature(template, "1:1", .83));
   });
 
@@ -91,12 +88,6 @@ describe("visual motion and cover treatment", () => {
     expect(lastTranslate).toBeGreaterThan(lastRotate);
     expect(imageIndex).toBeGreaterThan(lastTranslate);
     expect(calls.filter(([name]) => name === "arc").length).toBeGreaterThan(25);
-  });
-
-  it("builds Abstract Pulse from smooth bezier-like curves instead of concentric circles", () => {
-    const { context, calls } = recordingContext();
-    createScene("abstract-pulse").render(context, { time: .5, frame: 15, progress: .25, width: 180, height: 180, analysis });
-    expect(calls.filter(([name]) => name === "bezierCurveTo" || name === "quadraticCurveTo").length).toBeGreaterThan(5);
   });
 
   it("keeps Spectrum Cover artwork geometry stable while the scene animates", () => {

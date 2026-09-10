@@ -13,7 +13,7 @@ The interface should keep the number of decisions small while still allowing use
 ## MVP user flow
 
 1. Select an audio file.
-2. Select one of the initial visual templates.
+2. Select one of the supported visual templates.
 3. Add optional title, artist, cover/background image, and visual settings exposed by the template.
 4. Choose aspect ratio, resolution, and frame rate.
 5. Run a capability check for the current browser and device.
@@ -38,10 +38,6 @@ Cover art or a background image with a clean audio spectrum or waveform. It is t
 ### Vinyl Particle
 
 A rotating record with a center image and reactive particle accents.
-
-### Abstract Pulse
-
-A full-screen abstract motion background with waveform and beat-reactive effects.
 
 Templates should consume a stable, serializable scene configuration so the same project can eventually be rendered by a server worker.
 

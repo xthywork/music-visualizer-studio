@@ -10,7 +10,7 @@ export const ACCEPTED_AUDIO_TYPES = [
 ] as const;
 
 export type AspectRatio = "16:9" | "9:16" | "1:1";
-export type TemplateId = "spectrum-cover" | "vinyl-particle" | "abstract-pulse";
+export type TemplateId = "spectrum-cover" | "vinyl-particle";
 
 export interface OutputPreset {
   id: string;
@@ -52,12 +52,6 @@ export const TEMPLATES: Array<{ id: TemplateId; name: string; description: strin
     name: "Vinyl Particle",
     description: "旋轉唱片與節拍粒子",
     accent: "#ff7a9c",
-  },
-  {
-    id: "abstract-pulse",
-    name: "Abstract Pulse",
-    description: "全螢幕漸層、波形與脈衝",
-    accent: "#8d82ff",
   },
 ];
 

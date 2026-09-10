@@ -22,7 +22,7 @@ The system SHALL allow a user to select an MP3, WAV, or M4A audio file for a vis
 
 ### Requirement: Select and configure a visual template
 
-The system SHALL offer Spectrum Cover, Vinyl Particle, and Abstract Pulse as selectable templates, and SHALL allow the user to provide optional title, artist, cover, or background inputs supported by the selected template.
+The system SHALL offer Spectrum Cover and Vinyl Particle as selectable templates, and SHALL allow the user to provide optional title, artist, cover, or background inputs supported by the selected template.
 
 #### Scenario: User selects a template
 

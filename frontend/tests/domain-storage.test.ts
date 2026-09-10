@@ -65,6 +65,12 @@ afterEach(() => {
 });
 
 describe("versioned domain serialization", () => {
+  it("maps a legacy Abstract Pulse project to Spectrum Cover when reading", () => {
+    const legacy = JSON.parse(serializeProject(project).replace('"spectrum-cover"', '"abstract-pulse"')) as Record<string, unknown>;
+    const migrated = deserializeProject(JSON.stringify(legacy));
+    expect(migrated.configuration.templateId).toBe("spectrum-cover");
+  });
+
   it("round-trips all persisted fields and excludes accidental audio fields", () => {
     const tainted = { ...project, audio: new Uint8Array([1, 2, 3]), sourceAudio: "secret" } as ProjectRecord & {
       audio: Uint8Array;

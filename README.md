@@ -10,10 +10,9 @@ The first release is designed for personal and internal use. The boundaries betw
 
 ## Current scope
 
-- Three initial visual directions:
+- Two visual directions:
   - Minimal cover art with an audio spectrum
   - Rotating record with animated particles
-  - Full-screen abstract motion background with waveform and beat effects
 - Output aspect ratios: 16:9, 9:16, and 1:1
 - Selectable output resolution, up to 4K
 - Selectable frame rate, up to 60 fps

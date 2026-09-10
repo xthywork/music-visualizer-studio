@@ -12,8 +12,7 @@ export type DomainSchemaVersion = typeof DOMAIN_SCHEMA_VERSION;
 
 export type TemplateId =
   | "spectrum-cover"
-  | "vinyl-particle"
-  | "abstract-pulse";
+  | "vinyl-particle";
 
 export type AspectRatio = "16:9" | "9:16" | "1:1";
 

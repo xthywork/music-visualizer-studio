@@ -80,7 +80,7 @@ the `--disable-gpu` launch flag, WebCodecs preflight was available for all of:
 | 9:16 | 720p, 1080p, 4K | 30, 60 fps | available | available |
 | 1:1 | 720p, 1080p, 4K | 30, 60 fps | available | available |
 
-The end-to-end render path was also run successfully at 720p for all three
+The end-to-end render path was also run successfully at 720p for both
 aspect ratios. These results confirm that the capability checks and tested
 presets work in this environment; they do not promise that a device can render
 a long video in real time or complete a 4K60 export reliably. RAM, local

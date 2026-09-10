@@ -6,7 +6,7 @@ import { ProjectService } from "../src/ui/project-service";
 
 const configuration: RenderConfiguration = {
   schemaVersion: DOMAIN_SCHEMA_VERSION,
-  templateId: "abstract-pulse",
+  templateId: "spectrum-cover",
   text: { title: "Test", artist: "Artist" },
   output: { aspectRatio: "1:1", width: 1080, height: 1080, frameRate: 30 },
 };
