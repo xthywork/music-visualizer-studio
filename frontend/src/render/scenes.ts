@@ -112,6 +112,9 @@ export class VinylParticleScene implements Scene {
     // Keep the record composition intact while giving the whole subject a
     // restrained editorial nudge toward the left (about 5.5vw).
     const horizontalShift = width * .055;
+    // Keep the record and cover at their current position while giving the
+    // title and artist an additional 8vw editorial shift to the left.
+    const textHorizontalShift = horizontalShift + width * .08;
     const cx = (kind === "landscape" ? width * .34 : width * .5) - horizontalShift; const cy = kind === "landscape" ? height * .47 : kind === "portrait" ? height * .37 : height * .4;
     const recordPulse = 1 + a.beat * .014 + a.amplitude * .004 + a.low * .008;
     // Fine, deliberately imperfect orbit lines sit behind the record. They
@@ -206,8 +209,8 @@ export class VinylParticleScene implements Scene {
       const x = cx + Math.cos(angle) * orbit * pulse; const y = cy + Math.sin(angle) * orbit * pulse;
       ctx.beginPath(); ctx.arc(x, y, Math.max(.8, short / 520 * (.65 + depth * 1.2)), 0, Math.PI * 2); ctx.fillStyle = `rgba(${190 + Math.round(depth * 35)},${196 + Math.round(depth * 24)},${190 + Math.round(depth * 20)},${.16 + depth * .34})`; ctx.fill();
     }
-    if (kind === "landscape") drawEditorialText(ctx, this.title, this.artist, width * .68 - horizontalShift, height * .45, width * .23, "left", short);
-    else drawEditorialText(ctx, this.title, this.artist, width * .5 - horizontalShift, height * .86, width * .78, "center", short);
+    if (kind === "landscape") drawEditorialText(ctx, this.title, this.artist, width * .68 - textHorizontalShift, height * .45, width * .23, "left", short);
+    else drawEditorialText(ctx, this.title, this.artist, width * .5 - textHorizontalShift, height * .86, width * .78, "center", short);
   }
   dispose() { disposeAssets(this.assets); }
 }
