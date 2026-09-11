@@ -110,8 +110,8 @@ export class VinylParticleScene implements Scene {
     background(ctx, width, height, "#0b0d12", "#191d24", kind === "portrait" ? .05 : 1.1); drawAsset(ctx, this.assets.backgroundImage, width, height, .11);
     const radius = kind === "landscape" ? short * .31 : kind === "portrait" ? short * .37 : short * .34;
     // Keep the record composition intact while giving the whole subject a
-    // restrained editorial nudge toward the left (about 4vw).
-    const horizontalShift = width * .04;
+    // restrained editorial nudge toward the left (about 5.5vw).
+    const horizontalShift = width * .055;
     const cx = (kind === "landscape" ? width * .34 : width * .5) - horizontalShift; const cy = kind === "landscape" ? height * .47 : kind === "portrait" ? height * .37 : height * .4;
     const recordPulse = 1 + a.beat * .014 + a.amplitude * .004 + a.low * .008;
     // Fine, deliberately imperfect orbit lines sit behind the record. They

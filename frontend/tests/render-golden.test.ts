@@ -57,9 +57,9 @@ describe("low-resolution visualizer golden frames", () => {
     "spectrum-cover/16:9": "180x101:8d4df7c0",
     "spectrum-cover/9:16": "101x180:eb96f543",
     "spectrum-cover/1:1": "180x180:c73af8cd",
-    "vinyl-particle/16:9": "180x101:c42866a3",
-    "vinyl-particle/9:16": "101x180:d6f9e2bd",
-    "vinyl-particle/1:1": "180x180:3221181a",
+    "vinyl-particle/16:9": "180x101:7f7cb839",
+    "vinyl-particle/9:16": "101x180:1b84c0da",
+    "vinyl-particle/1:1": "180x180:91f122fb",
   };
 
   for (const template of templates) {
