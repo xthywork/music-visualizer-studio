@@ -34,12 +34,16 @@ function waveformAt(frame: SceneFrameContext, index: number): number {
   const values = frame.analysis.waveform;
   return values.length ? values[index % values.length] ?? 0 : 0;
 }
-function drawEditorialText(ctx: DrawContext, title: string, artist: string, x: number, titleY: number, maxWidth: number, align: CanvasTextAlign = "left", shortEdge = 720) {
+function drawEditorialText(ctx: DrawContext, title: string, artist: string, x: number, titleY: number, maxWidth: number, align: CanvasTextAlign = "left", shortEdge = 720, compressLongText = false) {
   const titleSize = Math.max(15, Math.round(shortEdge * .052)); const artistSize = Math.max(10, Math.round(shortEdge * .024)); const gap = Math.max(16, Math.round(shortEdge * .03));
   ctx.textAlign = align; ctx.fillStyle = "#f0eee8"; ctx.font = `600 ${titleSize}px Georgia, serif`;
-  ctx.fillText(fitText(ctx, title || "Untitled", maxWidth), x, titleY);
+  const titleText = title || "Untitled";
+  if (compressLongText && ctx.measureText(titleText).width > maxWidth) ctx.fillText(titleText, x, titleY, maxWidth);
+  else ctx.fillText(compressLongText ? titleText : fitText(ctx, titleText, maxWidth), x, titleY);
   ctx.fillStyle = "rgba(221,220,214,.58)"; ctx.font = `500 ${artistSize}px system-ui, sans-serif`;
-  ctx.fillText(fitText(ctx, artist || "Unknown Artist", maxWidth), x, titleY + gap);
+  const artistText = artist || "Unknown Artist";
+  if (compressLongText && ctx.measureText(artistText).width > maxWidth) ctx.fillText(artistText, x, titleY + gap, maxWidth);
+  else ctx.fillText(compressLongText ? artistText : fitText(ctx, artistText, maxWidth), x, titleY + gap);
 }
 function coverSizeFor(kind: "landscape" | "portrait" | "square", width: number, height: number) {
   const short = Math.min(width, height);
@@ -209,8 +213,14 @@ export class VinylParticleScene implements Scene {
       const x = cx + Math.cos(angle) * orbit * pulse; const y = cy + Math.sin(angle) * orbit * pulse;
       ctx.beginPath(); ctx.arc(x, y, Math.max(.8, short / 520 * (.65 + depth * 1.2)), 0, Math.PI * 2); ctx.fillStyle = `rgba(${190 + Math.round(depth * 35)},${196 + Math.round(depth * 24)},${190 + Math.round(depth * 20)},${.16 + depth * .34})`; ctx.fill();
     }
-    if (kind === "landscape") drawEditorialText(ctx, this.title, this.artist, width * .68 - textHorizontalShift, height * .45, width * .23, "left", short);
-    else drawEditorialText(ctx, this.title, this.artist, width * .5 - textHorizontalShift, height * .86, width * .78, "center", short);
+    if (kind === "landscape") {
+      const textX = width * .68 - textHorizontalShift; const textMaxWidth = Math.max(1, width - textX - Math.max(8, short * .04));
+      drawEditorialText(ctx, this.title, this.artist, textX, height * .45, textMaxWidth, "left", short, true);
+    } else {
+      const textX = width * .5 - textHorizontalShift; const textInset = Math.max(8, short * .04);
+      const textMaxWidth = Math.max(1, 2 * Math.min(textX - textInset, width - textX - textInset));
+      drawEditorialText(ctx, this.title, this.artist, textX, height * .86, textMaxWidth, "center", short, true);
+    }
   }
   dispose() { disposeAssets(this.assets); }
 }

@@ -57,8 +57,8 @@ describe("low-resolution visualizer golden frames", () => {
     "spectrum-cover/16:9": "180x101:8d4df7c0",
     "spectrum-cover/9:16": "101x180:eb96f543",
     "spectrum-cover/1:1": "180x180:c73af8cd",
-    "vinyl-particle/16:9": "180x101:42a011ad",
-    "vinyl-particle/9:16": "101x180:4ad49ae6",
+    "vinyl-particle/16:9": "180x101:f2f3c111",
+    "vinyl-particle/9:16": "101x180:89109226",
     "vinyl-particle/1:1": "180x180:12efdea3",
   };
 
@@ -73,6 +73,23 @@ describe("low-resolution visualizer golden frames", () => {
 });
 
 describe("visual motion and cover treatment", () => {
+  it("keeps Vinyl title and artist complete while Spectrum keeps ellipsis fitting", () => {
+    const title = "A Very Long Vinyl Composition Title That Must Stay Complete";
+    const artist = "An Artist Name That Is Deliberately Longer Than The Label";
+    const vinyl = recordingContext();
+    createScene("vinyl-particle", { title, artist }).render(vinyl.context, { time: .5, frame: 15, progress: .25, width: 180, height: 180, analysis });
+    const vinylText = vinyl.calls.filter(([name, value]) => name === "fillText" && (value === title || value === artist));
+    expect(vinylText).toHaveLength(2);
+    expect(vinylText.every((call) => typeof call[4] === "number" && call[4] > 0)).toBe(true);
+    expect(vinylText.every((call) => !String(call[1]).includes("…"))).toBe(true);
+
+    const spectrum = recordingContext();
+    createScene("spectrum-cover", { title, artist }).render(spectrum.context, { time: .5, frame: 15, progress: .25, width: 180, height: 180, analysis });
+    const spectrumTitle = spectrum.calls.find(([name, value]) => name === "fillText" && typeof value === "string" && value.startsWith("A Very Long"));
+    expect(spectrumTitle?.[1]).toContain("…");
+    expect(spectrumTitle).toHaveLength(4);
+  });
+
   it("keeps every supported template visibly time-responsive", () => {
     for (const template of templates) expect(renderSignature(template, "1:1", .5)).not.toBe(renderSignature(template, "1:1", .83));
   });
