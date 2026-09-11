@@ -251,18 +251,56 @@ async function saveProject(): Promise<ProjectRecord> {
   return project;
 }
 
+function setProjectRowExpanded(row: HTMLElement, expanded: boolean): void {
+  row.classList.toggle("expanded", expanded);
+  const toggle = row.querySelector<HTMLButtonElement>(".project-delete");
+  const confirm = row.querySelector<HTMLButtonElement>(".project-delete-confirm");
+  if (toggle) {
+    toggle.setAttribute("aria-expanded", String(expanded));
+    const projectName = row.querySelector<HTMLElement>(".project-item strong")?.textContent ?? "專案";
+    toggle.setAttribute("aria-label", `${expanded ? "收回刪除" : "展開刪除"} ${projectName}`);
+  }
+  if (confirm) {
+    confirm.setAttribute("aria-hidden", String(!expanded));
+    confirm.tabIndex = expanded ? 0 : -1;
+  }
+}
+
+function collapseProjectRows(except?: HTMLElement): void {
+  document.querySelectorAll<HTMLElement>(".project-row.expanded").forEach((row) => {
+    if (row !== except) setProjectRowExpanded(row, false);
+  });
+}
+
 async function refreshProjects(): Promise<void> {
   const projects = await projectService.listProjects();
   const list = document.querySelector<HTMLDivElement>("#project-list")!;
   list.innerHTML = projects.length ? projects.map((project) => {
     const latest = project.renders.at(-1);
     const status = latest?.status === "completed" && latest.output ? "MP4 已生成" : latest?.status ?? "尚未生成";
-    return `<div class="project-row"><button class="project-item" data-project-id="${project.id}"><strong>${escapeHtml(project.name)}</strong><small>${status}</small></button><button class="project-delete" data-delete-project="${project.id}" aria-label="刪除 ${escapeHtml(project.name)}">×</button></div>`;
+    const actionId = `project-actions-${project.id}`;
+    return `<div class="project-row" data-project-row="${project.id}"><button class="project-item" data-project-id="${project.id}" aria-controls="${actionId}"><strong>${escapeHtml(project.name)}</strong><small>${status}</small></button><div class="project-actions" id="${actionId}"><button class="project-delete" type="button" data-delete-project="${project.id}" aria-label="展開刪除 ${escapeHtml(project.name)}" aria-expanded="false" aria-controls="${actionId}">×</button><button class="project-delete-confirm" type="button" data-confirm-delete="${project.id}" aria-label="確認刪除 ${escapeHtml(project.name)}" aria-hidden="true" tabindex="-1">刪除</button></div></div>`;
   }).join("") : '<p class="empty-projects">專案與輸出只會儲存在這個瀏覽器。</p>';
-  list.querySelectorAll<HTMLButtonElement>("[data-project-id]").forEach((button) => button.addEventListener("click", () => void openProject(button.dataset.projectId!)));
+  list.querySelectorAll<HTMLButtonElement>("[data-project-id]").forEach((button) => button.addEventListener("click", () => {
+    const row = button.closest<HTMLElement>(".project-row");
+    if (!row) return;
+    if (row.classList.contains("expanded")) {
+      setProjectRowExpanded(row, false);
+      return;
+    }
+    collapseProjectRows();
+    void openProject(button.dataset.projectId!);
+  }));
   list.querySelectorAll<HTMLButtonElement>("[data-delete-project]").forEach((button) => button.addEventListener("click", async () => {
-    const id = button.dataset.deleteProject!;
-    if (!window.confirm("刪除這個專案與本機 MP4？此操作無法復原。")) return;
+    const row = button.closest<HTMLElement>(".project-row");
+    if (!row) return;
+    const expanded = row.classList.contains("expanded");
+    collapseProjectRows(row);
+    setProjectRowExpanded(row, !expanded);
+  }));
+  list.querySelectorAll<HTMLButtonElement>("[data-confirm-delete]").forEach((button) => button.addEventListener("click", async () => {
+    const id = button.dataset.confirmDelete!;
+    button.disabled = true;
     await projectService.deleteProject(id);
     if (currentProjectId === id) resetDraft();
     await refreshProjects();

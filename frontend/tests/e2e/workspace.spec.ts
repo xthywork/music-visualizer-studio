@@ -116,6 +116,31 @@ test("accepts audio and artwork by drag and drop", async ({ page }) => {
   await expect(page.locator("#background-preview-image")).toBeVisible();
 });
 
+test("reveals an accessible project delete action before deleting", async ({ page }) => {
+  await page.locator("#title-input").fill("Delete me");
+  await page.locator("#audio-input").setInputFiles({ name: "delete.wav", mimeType: "audio/wav", buffer: wavFixture(.1) });
+  const row = page.locator(".project-row", { hasText: "Delete me" });
+  await expect(row).toBeVisible();
+
+  const toggle = row.locator(".project-delete");
+  const confirm = row.locator(".project-delete-confirm");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
+  await expect(row).toHaveClass(/expanded/);
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(confirm).toHaveAttribute("aria-hidden", "false");
+  await expect(confirm).toHaveAttribute("tabindex", "0");
+
+  await row.locator(".project-item").click();
+  await expect(row).not.toHaveClass(/expanded/);
+  await expect(page.locator("#title-input")).toHaveValue("Delete me");
+
+  await toggle.click();
+  await confirm.click();
+  await expect(page.locator(".project-row")).toHaveCount(0);
+  await expect(page.locator(".empty-projects")).toBeVisible();
+});
+
 test("fits the three-step workspace in a desktop viewport", async ({ page }) => {
   await page.setViewportSize({ width: 1365, height: 768 });
   await expect(page.locator(".section-title h2")).toHaveText([
