@@ -1,3 +1,7 @@
+> Historical archive: this delta spec records the original MVP change. The
+> current normative specification is
+> `openspec/specs/local-project-storage/spec.md`.
+
 ## Purpose
 
 Keeps project history and generated videos available on the user's browser while ensuring that source audio is not retained, uploaded, or silently copied to a remote service.
@@ -64,4 +68,3 @@ The system SHALL allow the user to delete a project, delete its generated MP4 wh
 
 - **WHEN** saving metadata or an MP4 exceeds the browser's available local storage
 - **THEN** the system keeps the unsaved state visible, explains the quota problem, and suggests deleting stored outputs before retrying
-

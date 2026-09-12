@@ -22,13 +22,15 @@ Saved only in the local browser store
 - Project metadata and template settings
 - Title, artist, and output configuration
 - Cover/background image data or references needed by the project
-- Generated MP4 Blob and its metadata
+- Render history and generated-output metadata
+- Generated MP4 Blob when browser quota permits the output save
 
 If MP4 Blob persistence fails after generation, the Blob remains available in
 memory in the current tab for preview and download. It is not durable and is
-released when the page closes. On reopen, if the latest completed metadata has
-no Blob but an older saved output exists, the UI identifies that it is showing
-an older version.
+released when the page reloads/closes, the workspace leaves or deletes that
+project, a new project starts, or a newer output replaces it. On reopen, if the
+latest completed metadata has no Blob but an older saved output exists, the UI
+identifies that it is showing an older version.
 
 ## Not persisted
 
@@ -39,7 +41,10 @@ an older version.
 
 ## User controls
 
-The UI should provide project deletion, generated-output deletion, and a way to show approximate local storage usage. When storage is unavailable or full, explain that the user can delete old outputs or export/download them before retrying.
+The UI provides project deletion, generated-output deletion, and approximate
+local storage usage. When MP4 storage is full, it preserves the newest output
+temporarily for immediate download and identifies that the output was not
+saved.
 
 Autosave writes are serialized with manual/render-triggered saves. Project
 switch flushes the scheduled snapshot for the project being left. Creating a

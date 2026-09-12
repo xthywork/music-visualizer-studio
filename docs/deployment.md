@@ -16,24 +16,25 @@ http://<server-ip>:34388
 
 ## Start the service
 
-On a clean Ubuntu Server 24.04 host, install `uv`, check out the repository,
-and install the locked environment:
+On a clean Ubuntu Server 24.04 host, install `uv` and clone the repository:
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-uv sync --frozen
+git clone <repo>
+cd <repo>
 ```
 
-Build the browser application so that `frontend/dist/index.html` is available,
-then start FastAPI with the documented defaults:
+The repository includes the current production files under `frontend/dist`.
+Start FastAPI with the documented defaults; `uv` creates or synchronizes the
+Python environment from `uv.lock` automatically:
 
 ```bash
-cd frontend
-npm ci
-npm run build
-cd ..
 uv run music-visualizer
 ```
+
+Node.js and npm are not required on a host that only runs the application.
+Developers who change frontend source must run `npm ci` and `npm run build`
+from `frontend/`, then commit the updated `frontend/dist` files.
 
 The host and port can be overridden for a proxy or local deployment:
 
@@ -48,9 +49,10 @@ curl -f http://127.0.0.1:34388/health
 curl -f http://127.0.0.1:34388/
 ```
 
-The service exposes only health and static-application routes in the MVP. It
-does not expose an audio-upload endpoint, and source audio is never written to
-the server filesystem.
+The application's MVP routes are the static frontend and health endpoints;
+FastAPI also exposes its API schema/docs under `/api/openapi.json`, `/api/docs`,
+and `/api/redoc`. There is no audio-upload endpoint, and source audio is never
+written to the server filesystem.
 
 The server does not need a GPU for browser-first rendering. CPU capacity is still relevant for serving the application and any future fallback jobs.
 

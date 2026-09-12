@@ -1,3 +1,7 @@
+> Historical archive: this file records the original MVP proposal and is not
+> the current product contract. Abstract Pulse was subsequently removed; see
+> `openspec/specs/` and `docs/product-requirements.md` for current behavior.
+
 ## Why
 
 Creating a polished music visualizer currently requires separate creative, animation, and video-export tools. This change establishes a focused internal web workflow that turns an audio track into a configurable MP4 in a few steps, while keeping source audio private and preserving a clean path to a future SaaS product.
@@ -31,4 +35,3 @@ None. The project has no existing capability specifications.
 - Browser-local persistence adapter, initially backed by IndexedDB or an equivalent browser store for metadata and MP4 Blobs.
 - New test coverage for templates, output ratios, codec capability failures, storage quota failures, and render lifecycle states.
 - No server GPU is required for the MVP; server-side rendering remains a future fallback boundary.
-

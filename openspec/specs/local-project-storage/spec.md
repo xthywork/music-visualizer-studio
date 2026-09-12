@@ -36,12 +36,14 @@ The system SHALL retain a successfully generated MP4 in browser-local storage so
 
 ### Requirement: Never persist source audio
 
-The system SHALL process the selected source audio only for the active render session and SHALL NOT persist it in project storage or upload it to the FastAPI service in the MVP.
+The system SHALL keep a selected source-audio `File` only in the active browser
+workspace, decode it for rendering without persistence, and SHALL NOT store it
+in project records or upload it to the FastAPI service in the MVP.
 
 #### Scenario: Render session ends
 
 - **WHEN** a render completes, fails, or is cancelled
-- **THEN** the system releases the source audio and does not include it in the saved project record
+- **THEN** the system releases the audio used by that render and does not include it in the saved project record; a newer audio selection made during the render remains available
 
 #### Scenario: Project is reopened without its source audio
 
@@ -62,7 +64,12 @@ The system SHALL allow the user to delete a project, delete its generated MP4 wh
 - **WHEN** the user deletes a project's generated MP4
 - **THEN** the system retains the project configuration and marks the output unavailable for download
 
-#### Scenario: Browser storage quota is exceeded
+#### Scenario: Completed MP4 Blob exceeds browser storage quota
 
-- **WHEN** saving metadata or an MP4 exceeds the browser's available local storage
-- **THEN** the system keeps the unsaved state visible, explains the quota problem, and suggests deleting stored outputs before retrying
+- **WHEN** completed render metadata is recorded but saving its MP4 Blob exceeds the browser's available local storage
+- **THEN** the system keeps the completed MP4 available in memory for immediate preview and download and marks it as not saved after reload
+
+#### Scenario: User leaves a project with an unsaved in-memory output
+
+- **WHEN** the user opens another project, starts a new project, deletes the project, or replaces its quota-rejected output
+- **THEN** the system releases the volatile MP4 and its object URL so large outputs do not accumulate in memory

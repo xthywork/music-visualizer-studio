@@ -15,10 +15,10 @@ The first release is designed for personal and internal use. The boundaries betw
   - Rotating record with animated particles
 - Output aspect ratios: 16:9, 9:16, and 1:1
 - Selectable output resolution, up to 4K
-- Selectable frame rate, up to 60 fps
+- Selectable frame rate: 30 or 60 fps
 - Audio input: MP3, WAV, and M4A, initially limited to 10 minutes per track
 - PNG/JPEG/WebP cover/background images, with decode and 4K-derived size guards
-- Browser-first rendering in a Web Worker, with GPU or hardware encoding when available
+- Browser-first Canvas 2D rendering in a Web Worker, with hardware-accelerated WebCodecs encoding when available
 - MP4 output retained in browser-local IndexedDB for later preview/download when quota allows
 - Audio is used for rendering but is not retained
 - Desktop Chrome and Edge are the primary supported browsers for the MVP
@@ -85,8 +85,8 @@ npm run dev
 ```
 
 See [docs/development.md](docs/development.md) for browser codec strategy and
-the validated Chrome/Edge matrix, and [docs/deployment.md](docs/deployment.md)
-for Ubuntu Server deployment.
+the automated browser-validation scope, and
+[docs/deployment.md](docs/deployment.md) for Ubuntu Server deployment.
 
 ## Tests
 
@@ -119,7 +119,7 @@ npm run test:e2e
 Browser
   |-- audio + template settings + image assets
   v
-Web Worker -> Canvas/WebGL -> WebCodecs -> MP4 muxing
+Web Worker -> Canvas 2D -> WebCodecs -> MP4 muxing
   |
   +--> IndexedDB/local browser storage: project metadata and generated MP4
   +--> audio bytes: released after rendering and never copied into project storage
@@ -145,8 +145,10 @@ backup.
 
 If a completed MP4 cannot be written because IndexedDB is full, the current tab
 keeps that Blob available for preview and download. It is temporary and
-disappears when the tab is closed or reloaded. If the newest output is missing
-but an older saved output exists, the UI labels the older version explicitly.
+is released when the user leaves or deletes the project, starts a new project,
+replaces the output, closes the tab, or reloads the page. If the newest output
+is missing but an older saved output exists, the UI labels the older version
+explicitly.
 
 Rendering is capability-gated and device-dependent. A successful preflight
 does not guarantee real-time performance for long videos or 4K60: available

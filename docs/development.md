@@ -2,9 +2,10 @@
 
 ## Required environment
 
-- Ubuntu Server 24.04
+- Ubuntu Server 24.04 as the deployment and primary validation target
 - Python managed with `uv`
-- Git and GitHub CLI (`gh`)
+- Git
+- Node.js and npm only when changing or testing frontend source
 - A desktop Chrome or Edge browser for the primary MVP path
 
 The server is expected to listen on `0.0.0.0:34388`.
@@ -43,9 +44,9 @@ uv run music-visualizer
 ```
 
 The health checks are available at `/health` and `/api/health`. The root route
-serves `frontend/dist/index.html` (with an SPA fallback for client-side routes)
-when a frontend build exists; before a build it returns a small service-status
-response so deployment checks remain actionable.
+serves the committed `frontend/dist/index.html`, with an SPA fallback for
+client-side routes. If that distribution is missing, the root route returns a
+small `frontend: "not-built"` service-status response instead of the website.
 
 Missing `/assets/*` requests return HTTP 404 instead of the SPA HTML shell.
 
@@ -66,28 +67,52 @@ in this order:
 
 For each supported codec combination, the capability check tries the
 `prefer-hardware` WebCodecs acceleration preference first, then
-`no-preference`, and finally `prefer-software`. A setting is offered only when
+`no-preference`, and finally `prefer-software`. Rendering is enabled only when
 the requested dimensions, frame rate, encoder path, and MP4 muxing check
 succeed. This is a runtime capability decision, not a user-agent assumption.
 
-## Validated browser matrix (2026-09-10)
+## Automated browser validation (2026-09-12)
 
-On Ubuntu Server 24.04, the desktop browser matrix was checked with official
-Chrome 153 and Edge 152 builds. With both the default GPU configuration and
-the `--disable-gpu` launch flag, WebCodecs preflight was available for all of:
+The checked-in Playwright configuration runs one Chromium project. The current
+local runner is Playwright 1.63 with Chrome for Testing 153. The E2E suite
+creates and inspects playable 30 fps 720p MP4 files for all three aspect
+ratios:
 
-| Aspect ratio | Presets | Frame rates | Default GPU | `--disable-gpu` |
-| --- | --- | --- | --- | --- |
-| 16:9 | 720p, 1080p, 4K | 30, 60 fps | available | available |
-| 9:16 | 720p, 1080p, 4K | 30, 60 fps | available | available |
-| 1:1 | 720p, 1080p, 4K | 30, 60 fps | available | available |
+| Aspect ratio | E2E output | Frame rate |
+| --- | --- | --- |
+| 16:9 | 1280 × 720 | 30 fps |
+| 9:16 | 720 × 1280 | 30 fps |
+| 1:1 | 720 × 720 | 30 fps |
 
-The end-to-end render path was also run successfully at 720p for both
-aspect ratios. These results confirm that the capability checks and tested
-presets work in this environment; they do not promise that a device can render
-a long video in real time or complete a 4K60 export reliably. RAM, local
-storage quota, browser memory limits, encoder throughput, and overall device
-performance can still constrain a render.
+The suite also exercises cancellation at 9:16, 720p, and 60 fps. Unit tests
+cover the codec-policy and unsupported-capability branches, but the automated
+matrix does not currently render 1080p or 4K output and does not run Edge or a
+dedicated `--disable-gpu` project. Those remain manual compatibility checks.
+No result promises that a device can render a long video in real time or
+complete a 4K60 export reliably. RAM, local storage quota, browser memory
+limits, encoder throughput, and overall device performance can still constrain
+a render.
+
+The resolution and frame-rate selectors remain visible for every configured
+preset. Capability detection evaluates the current selection asynchronously;
+when its complete codec/mux path is unsupported, the Generate button is
+disabled and the reason is shown. The UI does not automatically switch to a
+lower preset.
+
+## Frontend production bundle
+
+`frontend/dist` is committed so runtime-only hosts do not need Node.js. After
+changing frontend source, rebuild and include the resulting distribution in
+the same change:
+
+```bash
+cd frontend
+npm ci
+npm run build
+git status --short dist
+```
+
+Do not commit `frontend/node_modules` or Playwright output.
 
 ## Development principles
 

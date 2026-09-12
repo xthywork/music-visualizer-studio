@@ -1,3 +1,8 @@
+> Historical archive: these checkboxes describe the original implementation
+> change. Later revisions removed Abstract Pulse and changed parts of the
+> implementation; current behavior is documented under `docs/` and
+> `openspec/specs/`.
+
 ## 1. Application and service foundation
 
 - [x] 1.1 Create the `uv`-managed Python project and FastAPI application skeleton, then verify dependency installation with `uv sync` and a passing health-endpoint test.

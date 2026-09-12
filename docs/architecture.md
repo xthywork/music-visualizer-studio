@@ -29,20 +29,26 @@ The MVP is local-first: the browser owns the media-processing work and the serve
 
 1. Read and decode the selected audio file on the UI thread without persisting it.
 2. Transfer a transient planar PCM snapshot to the worker, then analyse it for spectrum, waveform, and beat-reactive data.
-3. Render each frame from a serializable template configuration.
-4. Use Canvas/WebGL (and later WebGPU where useful) for visual work.
+3. Render each frame with Canvas 2D from a serializable template configuration.
+4. Keep the scene boundary portable so another graphics backend can be added later without changing project records.
 5. Encode frames with WebCodecs when the browser supports a suitable encoder and hardware path.
 6. Mux encoded video and audio into a playable MP4.
 7. Present the completed Blob immediately, then write the MP4 and project metadata to local browser storage.
 8. Release audio buffers and temporary render data.
 
-Rendering belongs in a Web Worker so progress updates and navigation remain responsive. GPU acceleration is an implementation opportunity, not a guarantee; capability checks must determine the available codec, resolution, and frame-rate choices.
+Rendering belongs in a Web Worker so progress updates and navigation remain
+responsive. Scenes currently use Canvas 2D. WebCodecs requests hardware
+encoding first and falls back when necessary, but acceleration is not a
+guarantee; capability checks determine whether the selected codec, resolution,
+and frame-rate path can run.
 
 Render events are serialized per session and guarded by a terminal identity.
 Completion, cancellation, Worker failure, and storage failure can therefore
 clean up only once, and a late event cannot mutate a newer render. A successful
-encode is distinct from successful persistence: quota failure retains one
-in-memory output for the current tab instead of discarding the download.
+encode is distinct from successful persistence: quota failure retains the
+current project's newest output in memory instead of discarding the download.
+That volatile output is released when the workspace leaves or deletes the
+project, starts a new project, replaces the output, or reloads/closes the tab.
 
 ## MP4 compatibility boundary
 
@@ -50,7 +56,10 @@ Browser video encoding and MP4 container muxing are separate concerns. The rende
 
 ## Storage boundary
 
-Use a browser-local persistence abstraction rather than calling IndexedDB throughout the UI. The initial adapter may use IndexedDB for project metadata and MP4 Blobs; large-file handling can move to OPFS or another browser-backed store if quota or performance requires it.
+The UI uses a browser-local persistence abstraction rather than calling
+IndexedDB throughout the application. The current adapter stores project
+metadata and MP4 Blobs in IndexedDB; large-file handling can move to OPFS or
+another browser-backed store if quota or performance requires it.
 
 Autosave captures an immutable configuration and project/workspace identity at
 the time it is scheduled. Autosave and explicit saves use one serialized queue.

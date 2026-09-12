@@ -1,3 +1,7 @@
+> Historical archive: this delta spec records the original MVP change,
+> including the later-removed Abstract Pulse template. The current normative
+> specification is `openspec/specs/visualizer-generation/spec.md`.
+
 ## Purpose
 
 Provides a focused workflow for turning a supported audio track and a visual template into a previewable, downloadable MP4 music visualizer with predictable output options.
@@ -92,4 +96,3 @@ The system SHALL combine the rendered video and the source audio into a playable
 
 - **WHEN** a completed MP4 is previewed or downloaded
 - **THEN** its media metadata identifies the selected dimensions, frame rate, and audio/video tracks
-

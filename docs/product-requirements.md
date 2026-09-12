@@ -20,14 +20,14 @@ The interface should keep the number of decisions small while still allowing use
 6. Render in a background browser worker.
 7. Show progress, estimated remaining time, errors, and cancellation where supported.
 8. Preview the generated video and download the MP4.
-9. Save the project record and generated MP4 in local browser storage. If MP4 persistence fails, keep the newly generated Blob downloadable for the lifetime of the current tab.
+9. Save the project record and generated MP4 in local browser storage. If MP4 persistence fails, keep the newly generated Blob downloadable while the user remains in that project and tab.
 
 ## Supported output
 
 - Aspect ratios: 16:9, 9:16, 1:1
 - Maximum target: 4K at 60 fps
-- Resolution choices should be constrained by the selected aspect ratio and detected device capabilities.
-- MP4 should use broadly playable video and audio codecs when available.
+- Resolution choices are constrained by the selected aspect ratio. The current selection is capability-checked and rendering is disabled when its codec/mux path is unsupported.
+- MP4 prefers H.264/AAC, then checks H.264/Opus, VP9/AAC, and VP9/Opus fallbacks.
 
 ## Initial templates
 
@@ -60,6 +60,11 @@ the source audio again.
 Artwork input is restricted to PNG, JPEG, and WebP. SVG is not accepted.
 Oversized or inconsistent image headers and failed decodes must be rejected
 before the asset reaches preview, worker, or project persistence.
+
+When a render succeeds but its MP4 Blob cannot be saved, the current project
+keeps that output in memory for immediate preview and download. It is marked
+as not saved after reload and is released when the user leaves or deletes the
+project, starts a new project, or replaces the output.
 
 ## Non-goals for the MVP
 

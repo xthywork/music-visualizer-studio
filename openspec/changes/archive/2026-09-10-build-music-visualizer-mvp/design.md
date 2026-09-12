@@ -1,3 +1,7 @@
+> Historical archive: this file preserves the original design discussion,
+> including alternatives that were not retained. See `docs/architecture.md`
+> and `openspec/specs/` for the implemented architecture and current contract.
+
 ## Context
 
 This is a greenfield repository with product and deployment documentation but no application code or existing capability specs. The runtime target is Ubuntu Server 24.04 with a FastAPI service managed by `uv`, bound to `0.0.0.0:34388`; the server must not require a GPU for the MVP. See `proposal.md` and the capability specs for the user-visible contract.
@@ -80,4 +84,3 @@ If the browser renderer is disabled or rolled back, the server can continue serv
 
 - The exact named resolution presets and bitrate ladder can be selected during implementation without changing the user-visible aspect-ratio, selectable-resolution, or maximum-output requirements.
 - The trigger and API shape for a future server CPU fallback can be finalized when server rendering is brought into scope.
-

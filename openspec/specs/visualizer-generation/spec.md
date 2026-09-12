@@ -36,17 +36,17 @@ The system SHALL offer Spectrum Cover and Vinyl Particle as selectable templates
 
 ### Requirement: Configure output format
 
-The system SHALL allow the user to select exactly one of the 16:9, 9:16, or 1:1 aspect ratios, a supported output resolution, and a frame rate up to 60 fps, including a 4K option when the device capability check permits it.
+The system SHALL allow the user to select exactly one of the 16:9, 9:16, or 1:1 aspect ratios, a 720p, 1080p, or 4K output preset, and either 30 or 60 fps. The device capability check SHALL determine whether the selected combination can render.
 
 #### Scenario: User selects a valid output
 
 - **WHEN** the user selects an allowed aspect ratio, resolution, and frame rate
-- **THEN** the system shows the resulting dimensions and marks the project ready to render
+- **THEN** the system shows the resulting dimensions and capability status and enables rendering when a valid source audio selection is also ready
 
 #### Scenario: Requested output exceeds device capability
 
 - **WHEN** the selected resolution or frame rate is not supported by the current browser or device
-- **THEN** the system disables or rejects that combination and explains which lower options are available
+- **THEN** the system disables rendering for that selection and explains that its encoding path is unsupported
 
 ### Requirement: Report browser rendering capability
 
@@ -60,7 +60,7 @@ The system SHALL check the current browser and device before rendering and SHALL
 #### Scenario: Capability check fails
 
 - **WHEN** the browser cannot support the requested combination
-- **THEN** the system prevents an invalid render, explains the limitation, and offers compatible settings or a future server-rendering option when available
+- **THEN** the system prevents an invalid render and explains the missing playable MP4 codec or muxing capability so the user can select another preset or browser
 
 ### Requirement: Render without blocking the interface
 
