@@ -11,7 +11,7 @@ Used in memory for analysis/rendering
     v
 Decoded bytes released after render; never persisted
 
-Project settings + generated MP4
+Project settings + generated MP4 (when quota allows)
     |
     v
 Saved only in the local browser store
@@ -24,6 +24,12 @@ Saved only in the local browser store
 - Cover/background image data or references needed by the project
 - Generated MP4 Blob and its metadata
 
+If MP4 Blob persistence fails after generation, the Blob remains available in
+memory in the current tab for preview and download. It is not durable and is
+released when the page closes. On reopen, if the latest completed metadata has
+no Blob but an older saved output exists, the UI identifies that it is showing
+an older version.
+
 ## Not persisted
 
 - Original audio file
@@ -34,6 +40,12 @@ Saved only in the local browser store
 ## User controls
 
 The UI should provide project deletion, generated-output deletion, and a way to show approximate local storage usage. When storage is unavailable or full, explain that the user can delete old outputs or export/download them before retrying.
+
+Autosave writes are serialized with manual/render-triggered saves. Project
+switch flushes the scheduled snapshot for the project being left. Creating a
+new blank draft flushes edits when the current project already exists, while a
+not-yet-created draft is cancelled to avoid a ghost record. Project deletion
+waits for in-flight writes so a late save cannot recreate the deleted record.
 
 Browsers deliberately do not reveal a selected file's absolute path. The source
 audio is intentionally not remembered, so reopening a project always requires

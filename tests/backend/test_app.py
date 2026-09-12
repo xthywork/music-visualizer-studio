@@ -62,6 +62,9 @@ def test_built_frontend_assets_and_spa_fallback(tmp_path: Path) -> None:
     assert "visualizer" in client.get("/").text
     assert "console.log" in client.get("/asset.js").text
     assert "visualizer" in client.get("/projects/example").text
+    missing_asset = client.get("/assets/missing.js")
+    assert missing_asset.status_code == 404
+    assert missing_asset.json() == {"detail": "Not found"}
 
 
 def test_frontend_path_traversal_is_rejected(tmp_path: Path) -> None:

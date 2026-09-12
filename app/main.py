@@ -69,6 +69,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         if candidate.is_file():
             return FileResponse(candidate)
+        if path == "assets" or path.startswith("assets/"):
+            return JSONResponse({"detail": "Not found"}, status_code=404)
         return _serve_frontend(index_file, frontend_dir)
 
     return application

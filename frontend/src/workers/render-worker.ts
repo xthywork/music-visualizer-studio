@@ -3,7 +3,7 @@ import { detectCapabilities } from "../render/capabilities";
 import { WebCodecsEncoderAdapter } from "../render/encoder";
 import { createMp4MuxerFactory, Mp4MuxerAdapter, type MuxerFactory } from "../render/muxer";
 import { createSceneAsync, disposeScene } from "../render/scenes";
-import { dimensionsFor, frameCount } from "../render/types";
+import { dimensionsFor, frameCount, type Scene } from "../render/types";
 import type { RenderWorkerRequest, RenderWorkerResponse } from "./protocol";
 
 export interface RenderRuntimeDeps {
@@ -11,34 +11,44 @@ export interface RenderRuntimeDeps {
   post?: (response: RenderWorkerResponse) => void;
   /** Retains cancellation that arrives while async capability preflight runs. */
   isCancelled?: () => boolean;
+  capabilityDetector?: typeof detectCapabilities;
+  canvasFactory?: (width: number, height: number) => OffscreenCanvas;
+  sceneFactory?: typeof createSceneAsync;
+  encoderFactory?: (
+    config: Extract<RenderWorkerRequest, { type: "start" }>["snapshot"]["config"],
+    policy: NonNullable<Awaited<ReturnType<typeof detectCapabilities>>["policy"]>,
+    muxer: Mp4MuxerAdapter,
+  ) => WebCodecsEncoderAdapter;
 }
 
 export async function runRenderJob(request: Extract<RenderWorkerRequest, { type: "start" }>, deps: RenderRuntimeDeps = {}): Promise<void> {
   const post = deps.post ?? (() => undefined); const { config, audio, duration } = request.snapshot;
-  let selectedPolicy: Awaited<ReturnType<typeof detectCapabilities>>["policy"];
-  const muxerFactory = deps.muxerFactory;
-  const capability = await detectCapabilities(config.output, { muxer: true });
-  if (!capability.supported) throw new Error(capability.reasons.join(" "));
-  if (deps.isCancelled?.()) { releasePcmAudioSnapshot(audio); post({ type: "cancel", jobId: request.jobId }); return; }
-  selectedPolicy = capability.policy;
-  if (!selectedPolicy) throw new Error("Capability preflight returned no codec policy.");
-  const analysis = analyzePcmAudioSnapshot(audio); const dimensions = dimensionsFor(config.output); const totalFrames = frameCount(Math.min(duration, analysis.duration), config.output.frameRate);
-  const canvas = new OffscreenCanvas(dimensions.width, dimensions.height); const context = canvas.getContext("2d");
-  if (!context) throw new Error("Unable to create an OffscreenCanvas rendering context.");
-  const scene = await createSceneAsync(config.template.id, config.template);
-  const muxer = new Mp4MuxerAdapter(muxerFactory ?? createMp4MuxerFactory(selectedPolicy));
-  const muxMetadata = { width: dimensions.width, height: dimensions.height, frameRate: config.output.frameRate, duration: analysis.duration, hasAudio: true, hasVideo: true, codecPolicy: selectedPolicy };
-  const encoder = new WebCodecsEncoderAdapter(config.output, {}, selectedPolicy, {
-    // Encoded chunks are consumed immediately. Do not retain a second copy of
-    // the whole video/audio stream while mp4-muxer builds its single output.
-    video: (chunk) => muxer.addVideoChunk(chunk),
-    audio: (chunk) => muxer.addAudioChunk(chunk),
-  });
-  let cancelled = false; const cancel = () => { cancelled = true; };
-  const isCancelled = () => cancelled || Boolean(deps.isCancelled?.());
-  // The worker protocol can replace this callback while the job is active.
-  (runRenderJob as unknown as { cancel?: () => void }).cancel = cancel;
+  let scene: Scene | undefined;
+  let muxer: Mp4MuxerAdapter | undefined;
+  let encoder: WebCodecsEncoderAdapter | undefined;
+  let primaryError: unknown;
   try {
+    const capability = await (deps.capabilityDetector ?? detectCapabilities)(config.output, { muxer: true });
+    if (!capability.supported) throw new Error(capability.reasons.join(" "));
+    if (deps.isCancelled?.()) { post({ type: "cancel", jobId: request.jobId }); return; }
+    const selectedPolicy = capability.policy;
+    if (!selectedPolicy) throw new Error("Capability preflight returned no codec policy.");
+    const analysis = analyzePcmAudioSnapshot(audio); const dimensions = dimensionsFor(config.output); const totalFrames = frameCount(Math.min(duration, analysis.duration), config.output.frameRate);
+    const canvas = (deps.canvasFactory ?? ((width, height) => new OffscreenCanvas(width, height)))(dimensions.width, dimensions.height);
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Unable to create an OffscreenCanvas rendering context.");
+    scene = await (deps.sceneFactory ?? createSceneAsync)(config.template.id, config.template);
+    muxer = new Mp4MuxerAdapter(deps.muxerFactory ?? createMp4MuxerFactory(selectedPolicy));
+    const muxMetadata = { width: dimensions.width, height: dimensions.height, frameRate: config.output.frameRate, duration: analysis.duration, hasAudio: true, hasVideo: true, codecPolicy: selectedPolicy };
+    encoder = deps.encoderFactory
+      ? deps.encoderFactory(config, selectedPolicy, muxer)
+      : new WebCodecsEncoderAdapter(config.output, {}, selectedPolicy, {
+          // Encoded chunks are consumed immediately. Do not retain a second copy of
+          // the whole video/audio stream while mp4-muxer builds its single output.
+          video: (chunk) => muxer?.addVideoChunk(chunk),
+          audio: (chunk) => muxer?.addAudioChunk(chunk),
+        });
+    const isCancelled = () => Boolean(deps.isCancelled?.());
     muxer.begin(muxMetadata);
     await encoder.configure();
     const audioEncoded = await encoder.encodePcmSnapshot(audio, 1024, 48_000, isCancelled);
@@ -65,32 +75,62 @@ export async function runRenderJob(request: Extract<RenderWorkerRequest, { type:
     const output = muxer.finalize();
     const counts = encoder.counts;
     post({ type: "complete", jobId: request.jobId, output, metadata: { width: dimensions.width, height: dimensions.height, frameRate: config.output.frameRate, duration: analysis.duration, hasAudio: counts.audio > 0, hasVideo: counts.video > 0 } });
+  } catch (error) {
+    primaryError = error;
+    throw error;
   } finally {
-    encoder.close(); muxer.close(); disposeScene(scene); releasePcmAudioSnapshot(audio);
-    (runRenderJob as unknown as { cancel?: () => void }).cancel = undefined;
+    const cleanupErrors: unknown[] = [];
+    for (const cleanup of [
+      () => encoder?.close(),
+      () => muxer?.close(),
+      () => { if (scene) disposeScene(scene); },
+      () => releasePcmAudioSnapshot(audio),
+    ]) {
+      try { cleanup(); } catch (error) { cleanupErrors.push(error); }
+    }
+    if (primaryError === undefined && cleanupErrors.length) throw cleanupErrors[0];
   }
+}
+
+type RenderJobRunner = (request: Extract<RenderWorkerRequest, { type: "start" }>, deps: RenderRuntimeDeps) => Promise<void>;
+
+/** Owns worker job identity so cancel and terminal cleanup cannot target a later job. */
+export function createRenderWorkerMessageHandler(
+  post: (message: RenderWorkerResponse) => void,
+  runner: RenderJobRunner = runRenderJob,
+): (event: MessageEvent<RenderWorkerRequest>) => void {
+  let activeJob: { readonly jobId: string; cancelled: boolean } | undefined;
+  return (event) => {
+    const request = event.data;
+    if (request.type === "cancel") {
+      if (request.jobId === activeJob?.jobId) activeJob.cancelled = true;
+      return;
+    }
+    if (activeJob) {
+      post({
+        type: "error",
+        jobId: request.jobId,
+        error: { code: "RENDER_BUSY", message: "A render is already in progress in this worker." },
+      });
+      return;
+    }
+    const job = { jobId: request.jobId, cancelled: false };
+    activeJob = job;
+    post({ type: "start", jobId: request.jobId });
+    void runner(request, {
+      post,
+      isCancelled: () => job.cancelled,
+    }).catch((error: unknown) => post({
+      type: "error",
+      jobId: request.jobId,
+      error: { code: "RENDER_FAILED", message: error instanceof Error ? error.message : String(error) },
+    })).finally(() => {
+      if (activeJob === job) activeJob = undefined;
+    });
+  };
 }
 
 const workerScope = globalThis as unknown as { postMessage?: (message: RenderWorkerResponse) => void; onmessage?: (event: MessageEvent<RenderWorkerRequest>) => void };
 if (typeof workerScope.postMessage === "function" && typeof document === "undefined") {
-  let activeJob: string | undefined;
-  const cancelledJobs = new Set<string>();
-  workerScope.onmessage = (event) => {
-    const request = event.data;
-    if (request.type === "cancel") {
-      if (request.jobId === activeJob) {
-        cancelledJobs.add(request.jobId);
-        (runRenderJob as unknown as { cancel?: () => void }).cancel?.();
-      }
-      return;
-    }
-    activeJob = request.jobId; workerScope.postMessage?.({ type: "start", jobId: request.jobId });
-    runRenderJob(request, {
-      post: (response) => workerScope.postMessage?.(response),
-      isCancelled: () => cancelledJobs.has(request.jobId),
-    }).catch((error: unknown) => workerScope.postMessage?.({ type: "error", jobId: request.jobId, error: { code: "RENDER_FAILED", message: error instanceof Error ? error.message : String(error) } })).finally(() => {
-      cancelledJobs.delete(request.jobId);
-      activeJob = undefined;
-    });
-  };
+  workerScope.onmessage = createRenderWorkerMessageHandler((message) => workerScope.postMessage?.(message));
 }

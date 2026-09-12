@@ -1,3 +1,5 @@
+import type { AspectRatio, TemplateId } from "./domain";
+
 export const MAX_AUDIO_SECONDS = 10 * 60;
 export const ACCEPTED_AUDIO_EXTENSIONS = ["mp3", "wav", "m4a"] as const;
 export const ACCEPTED_AUDIO_TYPES = [
@@ -9,8 +11,7 @@ export const ACCEPTED_AUDIO_TYPES = [
   "audio/x-m4a",
 ] as const;
 
-export type AspectRatio = "16:9" | "9:16" | "1:1";
-export type TemplateId = "spectrum-cover" | "vinyl-particle";
+export type { AspectRatio, TemplateId } from "./domain";
 
 export interface OutputPreset {
   id: string;

@@ -20,7 +20,7 @@ The interface should keep the number of decisions small while still allowing use
 6. Render in a background browser worker.
 7. Show progress, estimated remaining time, errors, and cancellation where supported.
 8. Preview the generated video and download the MP4.
-9. Save the project record and generated MP4 in local browser storage.
+9. Save the project record and generated MP4 in local browser storage. If MP4 persistence fails, keep the newly generated Blob downloadable for the lifetime of the current tab.
 
 ## Supported output
 
@@ -56,6 +56,10 @@ A project record includes:
 The original audio bytes, file metadata, absolute path, and file handle are
 never part of a persisted project record. Reopening a project requires selecting
 the source audio again.
+
+Artwork input is restricted to PNG, JPEG, and WebP. SVG is not accepted.
+Oversized or inconsistent image headers and failed decodes must be rejected
+before the asset reaches preview, worker, or project persistence.
 
 ## Non-goals for the MVP
 

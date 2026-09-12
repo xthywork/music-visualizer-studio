@@ -47,6 +47,8 @@ serves `frontend/dist/index.html` (with an SPA fallback for client-side routes)
 when a frontend build exists; before a build it returns a small service-status
 response so deployment checks remain actionable.
 
+Missing `/assets/*` requests return HTTP 404 instead of the SPA HTML shell.
+
 The FastAPI application binds explicitly to the configured host and port. Host
 and port are configurable through environment variables while retaining
 `0.0.0.0` and `34388` as the internal defaults.
@@ -98,6 +100,20 @@ performance can still constrain a render.
 - Keep a clear boundary between browser rendering and the future server-rendering API.
 - Test each output aspect ratio and a representative low/high resolution before adding new templates.
 
+## Image input limits
+
+Artwork accepts only PNG, JPEG, and WebP. The browser validates MIME type,
+compressed size, file signature, header dimensions, and decoded dimensions
+before adding an image to project state. Limits are derived from the largest
+entry in `OUTPUT_PRESETS`: inputs beyond twice the maximum output dimensions or
+twice the maximum output pixel count are rejected before decode; accepted
+images are normalized to the maximum output envelope when needed.
+
+Images remain schema-compatible data URLs for this release. Moving them to a
+separate Blob asset store is still the preferred long-term direction, but was
+not combined with these safeguards because it requires a versioned IndexedDB
+migration and backward-compatibility plan.
+
 ## Additional validation scenarios
 
 - Chrome and Edge on a desktop with hardware acceleration enabled
@@ -107,3 +123,6 @@ performance can still constrain a render.
 - Short audio and the 10-minute input limit
 - Storage quota exhaustion and deleted site data
 - Cancellation, reload, and render failure recovery
+- Autosave/new/switch/delete races and concurrent render saves
+- IndexedDB quota failure with immediate in-memory MP4 download
+- Invalid SVG, forged headers, oversized images, and decode failures

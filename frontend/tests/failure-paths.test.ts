@@ -1,15 +1,16 @@
 // @vitest-environment node
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { validateAudioDuration, validateAudioFile } from "../src/config";
 import { DOMAIN_SCHEMA_VERSION, type RenderConfiguration } from "../src/domain";
 import { analyzePcmAudioSnapshot } from "../src/render/audio-analysis";
-import { detectCapabilities } from "../src/render/capabilities";
+import { codecPolicy, detectCapabilities } from "../src/render/capabilities";
 import { WebCodecsEncoderAdapter } from "../src/render/encoder";
 import { Mp4MuxerAdapter } from "../src/render/muxer";
 import { InMemoryProjectStorage } from "../src/storage/in-memory";
 import { outputId, STORAGE_SCHEMA_VERSION, type StoredOutput } from "../src/storage";
 import { ProjectService } from "../src/ui/project-service";
 import { RenderController } from "../src/workers/orchestrator";
+import { createRenderWorkerMessageHandler, runRenderJob } from "../src/workers/render-worker";
 import type { RenderWorkerRequest, RenderWorkerResponse } from "../src/workers/protocol";
 import type { PcmAudioSnapshot } from "../src/render/audio-analysis";
 import type { RenderConfig } from "../src/render/types";
@@ -70,6 +71,75 @@ class FakeWorker {
 }
 
 describe("worker cancellation and runtime failures", () => {
+  it("releases transferred PCM when capability preflight fails", async () => {
+    const audio: PcmAudioSnapshot = {
+      duration: 0.1,
+      sampleRate: 48_000,
+      numberOfChannels: 1,
+      channels: [new Float32Array(4_800)],
+    };
+    await expect(runRenderJob({
+      type: "start",
+      jobId: "unsupported-job",
+      snapshot: { config: renderConfig, audio, duration: audio.duration },
+    }, {
+      capabilityDetector: async () => ({
+        supported: false,
+        canvas: true,
+        videoEncoder: false,
+        audioEncoder: false,
+        mp4: true,
+        reasons: ["unsupported test codec"],
+        suggestions: [],
+      }),
+    })).rejects.toThrow(/unsupported test codec/);
+    expect(audio.channels).toHaveLength(0);
+    expect(audio.numberOfChannels).toBe(0);
+  });
+
+  it("continues worker cleanup when an earlier cleanup step throws", async () => {
+    const audio: PcmAudioSnapshot = {
+      duration: 0.1,
+      sampleRate: 48_000,
+      numberOfChannels: 1,
+      channels: [new Float32Array(4_800)],
+    };
+    const dispose = vi.fn();
+    const closeEncoder = vi.fn(() => { throw new Error("encoder close failed"); });
+    const policy = codecPolicy(renderConfig.output);
+    await expect(runRenderJob({
+      type: "start",
+      jobId: "configure-failure",
+      snapshot: { config: renderConfig, audio, duration: audio.duration },
+    }, {
+      capabilityDetector: async () => ({
+        supported: true,
+        canvas: true,
+        videoEncoder: true,
+        audioEncoder: true,
+        mp4: true,
+        reasons: [],
+        suggestions: [],
+        policy,
+        codecPath: policy.path,
+      }),
+      canvasFactory: () => ({ getContext: () => ({}) }) as unknown as OffscreenCanvas,
+      sceneFactory: async () => ({ id: "spectrum-cover", render: () => undefined, dispose }),
+      muxerFactory: () => ({
+        addVideoChunk: () => undefined,
+        addAudioChunk: () => undefined,
+        finalize: () => new Blob(),
+      }),
+      encoderFactory: () => ({
+        configure: async () => { throw new Error("configure failed"); },
+        close: closeEncoder,
+      }) as unknown as WebCodecsEncoderAdapter,
+    })).rejects.toThrow(/configure failed/);
+    expect(closeEncoder).toHaveBeenCalledOnce();
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(audio.channels).toHaveLength(0);
+  });
+
   it("transitions cancellation to a terminal state and never reports completion", () => {
     const worker = new FakeWorker();
     const controller = new RenderController(worker);
@@ -82,6 +152,43 @@ describe("worker cancellation and runtime failures", () => {
     worker.onmessage?.({ data: { type: "cancel", jobId: "cancel-job" } } as MessageEvent<RenderWorkerResponse>);
     expect(controller.getState()).toBe("cancelled");
     expect(updates.some((response) => response.type === "complete")).toBe(false);
+  });
+
+  it("keeps terminal controller state when a late worker error arrives", () => {
+    const worker = new FakeWorker();
+    const controller = new RenderController(worker);
+    const updates: RenderWorkerResponse[] = [];
+    controller.onUpdate(({ response }) => updates.push(response));
+    controller.start(renderConfig, pcm, pcm.duration, "terminal-job");
+    worker.onmessage?.({ data: { type: "complete", jobId: "terminal-job", output: new Blob(), metadata: { width: 1280, height: 720, frameRate: 30, duration: .1, hasAudio: true, hasVideo: true } } } as MessageEvent<RenderWorkerResponse>);
+    worker.onmessage?.({ data: { type: "error", jobId: "terminal-job", error: { code: "LATE", message: "late error" } } } as MessageEvent<RenderWorkerResponse>);
+    expect(controller.getState()).toBe("completed");
+    expect(updates.map((update) => update.type)).toEqual(["complete"]);
+  });
+
+  it("binds cancel to the active worker job and rejects a concurrent start", async () => {
+    const posted: RenderWorkerResponse[] = [];
+    let release!: () => void;
+    let activeCancelled = false;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const handler = createRenderWorkerMessageHandler((message) => posted.push(message), async (_request, deps) => {
+      await gate;
+      activeCancelled = Boolean(deps.isCancelled?.());
+    });
+    const start = (jobId: string): Extract<RenderWorkerRequest, { type: "start" }> => ({
+      type: "start",
+      jobId,
+      snapshot: { config: renderConfig, audio: { ...pcm, channels: [new Float32Array(4_800)] }, duration: pcm.duration },
+    });
+    handler({ data: start("job-a") } as MessageEvent<RenderWorkerRequest>);
+    handler({ data: start("job-b") } as MessageEvent<RenderWorkerRequest>);
+    handler({ data: { type: "cancel", jobId: "job-b" } } as MessageEvent<RenderWorkerRequest>);
+    handler({ data: { type: "cancel", jobId: "job-a" } } as MessageEvent<RenderWorkerRequest>);
+    expect(posted).toContainEqual(expect.objectContaining({ type: "error", jobId: "job-b", error: expect.objectContaining({ code: "RENDER_BUSY" }) }));
+    release();
+    await gate;
+    await Promise.resolve();
+    expect(activeCancelled).toBe(true);
   });
 
   it("surfaces memory/encoder failures as actionable failed state", () => {

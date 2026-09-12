@@ -1,8 +1,9 @@
+import type { AspectRatio, OutputConfiguration, TemplateId } from "../domain/models";
+
 /** Serializable boundary shared by preview, worker, and a future server renderer. */
-export type AspectRatio = "16:9" | "9:16" | "1:1";
-export type FrameRate = 24 | 25 | 30 | 50 | 60;
+export type { AspectRatio, TemplateId } from "../domain/models";
+export type FrameRate = OutputConfiguration["frameRate"];
 export type Resolution = "720p" | "1080p" | "1440p" | "4k";
-export type TemplateId = "spectrum-cover" | "vinyl-particle";
 
 export interface OutputConfig {
   aspectRatio: AspectRatio;

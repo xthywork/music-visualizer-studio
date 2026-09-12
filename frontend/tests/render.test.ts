@@ -168,7 +168,10 @@ describe("templates and worker states", () => {
     const context = { createLinearGradient: () => gradient, createRadialGradient: () => gradient, fillRect: () => calls.push("fillRect"), beginPath: () => calls.push("beginPath"), arc: () => calls.push("arc"), fill: () => calls.push("fill"), stroke: () => calls.push("stroke"), moveTo: () => {}, lineTo: () => {}, quadraticCurveTo: () => {}, bezierCurveTo: () => {}, closePath: () => {}, save: () => {}, restore: () => {}, translate: () => {}, rotate: () => {}, measureText: (text: string) => ({ width: text.length * 6 }), fillText: () => calls.push("fillText"), set fillStyle(_: unknown) {}, set strokeStyle(_: unknown) {}, set lineWidth(_: unknown) {}, set font(_: unknown) {}, set textAlign(_: unknown) {} } as any;
     for (const id of TEMPLATE_IDS) { calls.length = 0; createScene(id, config.template).render(context, { time: .5, frame: 15, progress: .5, width: 320, height: 180, analysis }); expect(calls.length).toBeGreaterThan(0); }
   });
-  it("transitions terminal worker events and ignores no illegal state mutation", () => {
+  it("transitions worker events and keeps terminal states immutable", () => {
     expect(transitionState("queued", "start")).toBe("rendering"); expect(transitionState("rendering", "complete")).toBe("completed"); expect(transitionState("rendering", "cancel")).toBe("cancelled"); expect(transitionState("rendering", "error")).toBe("failed");
+    expect(transitionState("completed", "error")).toBe("completed");
+    expect(transitionState("cancelled", "complete")).toBe("cancelled");
+    expect(transitionState("failed", "progress")).toBe("failed");
   });
 });

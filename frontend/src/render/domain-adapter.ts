@@ -1,5 +1,5 @@
 import type { ImageReference, RenderConfigurationV1 } from "../domain/models";
-import type { AspectRatio, RenderConfig, Resolution, TemplateId } from "./types";
+import { dimensionsFor, type RenderConfig, type Resolution } from "./types";
 
 function resolutionFromDimensions(width: number, height: number): Resolution {
   // Preset labels are defined by the short edge for landscape/portrait and
@@ -17,14 +17,14 @@ export function renderConfigFromDomain(config: RenderConfigurationV1): RenderCon
   return {
     schemaVersion: 1,
     template: {
-      id: config.templateId as TemplateId,
+      id: config.templateId,
       title: config.text.title,
       artist: config.text.artist,
       coverImage: config.coverImage?.value,
       backgroundImage: config.backgroundImage?.value,
     },
     output: {
-      aspectRatio: config.output.aspectRatio as AspectRatio,
+      aspectRatio: config.output.aspectRatio,
       resolution: resolutionFromDimensions(config.output.width, config.output.height),
       frameRate: config.output.frameRate,
     },
@@ -37,7 +37,7 @@ function imageReference(value: string | undefined): ImageReference | undefined {
 
 /** Converts a portable render snapshot back to the persisted domain configuration. */
 export function renderConfigToDomain(config: RenderConfig): RenderConfigurationV1 {
-  const widthHeight = dimensionsForDomain(config.output.aspectRatio, config.output.resolution);
+  const widthHeight = dimensionsFor(config.output);
   return {
     schemaVersion: 1,
     templateId: config.template.id,
@@ -46,11 +46,4 @@ export function renderConfigToDomain(config: RenderConfig): RenderConfigurationV
     backgroundImage: imageReference(config.template.backgroundImage),
     output: { aspectRatio: config.output.aspectRatio, width: widthHeight.width, height: widthHeight.height, frameRate: config.output.frameRate },
   };
-}
-
-function dimensionsForDomain(aspect: AspectRatio, resolution: Resolution): { width: number; height: number } {
-  const base = resolution === "720p" ? 720 : resolution === "1080p" ? 1080 : resolution === "1440p" ? 1440 : 2160;
-  if (aspect === "16:9") return { width: Math.round(base * 16 / 9), height: base };
-  if (aspect === "9:16") return { width: base, height: Math.round(base * 16 / 9) };
-  return { width: base, height: base };
 }

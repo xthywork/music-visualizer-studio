@@ -27,6 +27,7 @@ export function freezeSnapshot(snapshot: Extract<RenderWorkerRequest, { type: "s
 export type RenderState = "idle" | "queued" | "rendering" | "completed" | "cancelled" | "failed";
 
 export function transitionState(current: RenderState, event: RenderWorkerResponse["type"]): RenderState {
+  if (current === "completed" || current === "cancelled" || current === "failed") return current;
   if (event === "start") return "rendering";
   if (event === "progress") return current === "queued" || current === "rendering" ? "rendering" : current;
   if (event === "complete") return "completed";

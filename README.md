@@ -17,9 +17,9 @@ The first release is designed for personal and internal use. The boundaries betw
 - Selectable output resolution, up to 4K
 - Selectable frame rate, up to 60 fps
 - Audio input: MP3, WAV, and M4A, initially limited to 10 minutes per track
-- Cover/background image, title, and artist fields
+- PNG/JPEG/WebP cover/background images, with decode and 4K-derived size guards
 - Browser-first rendering in a Web Worker, with GPU or hardware encoding when available
-- MP4 output retained in browser-local IndexedDB for later preview/download
+- MP4 output retained in browser-local IndexedDB for later preview/download when quota allows
 - Audio is used for rendering but is not retained
 - Desktop Chrome and Edge are the primary supported browsers for the MVP
 
@@ -125,6 +125,11 @@ project completely. Browser eviction, cleared site data, private browsing, or
 quota limits can remove local projects and outputs, so local storage is not a
 backup.
 
+If a completed MP4 cannot be written because IndexedDB is full, the current tab
+keeps that Blob available for preview and download. It is temporary and
+disappears when the tab is closed or reloaded. If the newest output is missing
+but an older saved output exists, the UI labels the older version explicitly.
+
 Rendering is capability-gated and device-dependent. A successful preflight
 does not guarantee real-time performance for long videos or 4K60: available
 RAM, browser limits, local storage, and device performance still apply. The
@@ -146,6 +151,6 @@ local-data lifecycle.
 
 ## Project status
 
-The MVP implementation is complete. Future work may add authenticated SaaS
+The browser-first MVP is functional and regression-tested. Future work may add authenticated SaaS
 accounts, cloud synchronization, sharing, and a server-side CPU/GPU rendering
 fallback without changing the browser template configuration boundary.

@@ -18,6 +18,9 @@ import {
   IndexedDbProjectStorage,
 } from "./storage";
 import { ProjectService } from "./ui/project-service";
+import { ProjectSaveCoordinator } from "./ui/project-save-coordinator";
+import { normalizeImageFile } from "./ui/image-assets";
+import { LatestRequestGate } from "./ui/latest-request";
 import { renderProgressMessage } from "./ui/render-progress";
 import { detectCapabilities } from "./render/capabilities";
 import { renderConfigFromDomain } from "./render/domain-adapter";
@@ -65,11 +68,36 @@ const previewAnalysis: AudioAnalysis = {
 const projectService = new ProjectService(new IndexedDbProjectStorage());
 let currentProjectId: string | null = null;
 let saveTimer: number | undefined;
-let activeProjectId: string | null = null;
-let activeRenderId: string | null = null;
-let renderController: RenderController | null = null;
-let cancelRequested = false;
+let workspaceToken = 0;
+let workspaceNavigationToken = 0;
+let expandedProjectId: string | null = null;
+interface ActiveRenderSession {
+  readonly workspaceToken: number;
+  readonly sourceAudio: File;
+  projectId?: string;
+  renderId?: string;
+  controller?: RenderController;
+  cancelRequested: boolean;
+  finalized: boolean;
+  updates: Promise<void>;
+  readonly finished: Promise<void>;
+  readonly resolveFinished: () => void;
+}
+interface VolatileOutput {
+  readonly renderId: string;
+  readonly blob: Blob;
+  readonly projectName: string;
+}
+let activeRenderSession: ActiveRenderSession | null = null;
+const volatileOutputs = new Map<string, VolatileOutput>();
 let capabilitySupported = false;
+const capabilityRequests = new LatestRequestGate();
+const audioRequests = new LatestRequestGate();
+const imageRequests: Record<ImageTarget, LatestRequestGate> = {
+  coverUrl: new LatestRequestGate(),
+  backgroundUrl: new LatestRequestGate(),
+};
+let cancelPendingAudioInspection: (() => void) | null = null;
 let currentOutputUrl: string | null = null;
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -233,26 +261,69 @@ function configurationFromState(): RenderConfiguration {
   };
 }
 
+function captureProjectSaveSnapshot() {
+  return {
+    projectId: currentProjectId,
+    configuration: configurationFromState(),
+    name: state.title.trim() || "Untitled Project",
+    workspaceToken,
+  };
+}
+
+const projectSaveCoordinator = new ProjectSaveCoordinator<RenderConfiguration, ProjectRecord>({
+  create: (snapshot) => projectService.createProject(snapshot.name, snapshot.configuration),
+  update: (snapshot) => projectService.updateProject(snapshot.projectId!, snapshot.configuration, snapshot.name),
+  remove: (projectId) => projectService.deleteProject(projectId),
+}, {
+  currentProjectId: () => currentProjectId,
+  workspaceToken: () => workspaceToken,
+  applyCurrentProject: async (project) => {
+    currentProjectId = project.id;
+    await refreshProjects();
+  },
+});
+
 function scheduleProjectSave(): void {
   window.clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(() => void saveProject().catch((error) => {
-    renderStatus.textContent = error instanceof Error ? `無法保存專案：${error.message}` : "無法保存專案";
-  }), 250);
+  projectSaveCoordinator.schedule(captureProjectSaveSnapshot());
+  saveTimer = window.setTimeout(() => {
+    saveTimer = undefined;
+    void projectSaveCoordinator.flush().catch((error) => {
+      renderStatus.textContent = error instanceof Error ? `無法保存專案：${error.message}` : "無法保存專案";
+    });
+  }, 250);
+}
+
+function flushPendingSave(): Promise<ProjectRecord | undefined> {
+  window.clearTimeout(saveTimer);
+  saveTimer = undefined;
+  return projectSaveCoordinator.flush();
 }
 
 async function saveProject(): Promise<ProjectRecord> {
-  const configuration = configurationFromState();
-  const name = state.title.trim() || "Untitled Project";
-  const project = currentProjectId
-    ? await projectService.updateProject(currentProjectId, configuration, name)
-    : await projectService.createProject(name, configuration);
-  currentProjectId = project.id;
-  await refreshProjects();
+  await flushPendingSave();
+  const project = await projectSaveCoordinator.saveCurrent(captureProjectSaveSnapshot);
+  if (!project) throw new Error("專案保存已取消。");
   return project;
+}
+
+function abandonPendingSave(): void {
+  window.clearTimeout(saveTimer);
+  saveTimer = undefined;
+  projectSaveCoordinator.abandonPending();
+  workspaceToken += 1;
+}
+
+function cancelProjectSaves(projectId: string): Promise<void> {
+  if (currentProjectId === projectId) workspaceToken += 1;
+  return projectSaveCoordinator.cancelProject(projectId);
 }
 
 function setProjectRowExpanded(row: HTMLElement, expanded: boolean): void {
   row.classList.toggle("expanded", expanded);
+  const projectId = row.dataset.projectRow ?? null;
+  if (expanded) expandedProjectId = projectId;
+  else if (expandedProjectId === projectId) expandedProjectId = null;
   const toggle = row.querySelector<HTMLButtonElement>(".project-delete");
   const confirm = row.querySelector<HTMLButtonElement>(".project-delete-confirm");
   if (toggle) {
@@ -274,10 +345,19 @@ function collapseProjectRows(except?: HTMLElement): void {
 
 async function refreshProjects(): Promise<void> {
   const projects = await projectService.listProjects();
+  const statuses = new Map(await Promise.all(projects.map(async (project) => {
+    const latest = project.renders.at(-1);
+    if (!latest) return [project.id, "尚未生成"] as const;
+    if (latest.status !== "completed" || !latest.output) return [project.id, latest.status] as const;
+    if (volatileOutputs.get(project.id)?.renderId === latest.id) {
+      return [project.id, "MP4 已生成（僅此分頁）"] as const;
+    }
+    const output = await projectService.getOutput(project.id, latest.id);
+    return [project.id, output ? "MP4 已生成" : "MP4 未保存"] as const;
+  })));
   const list = document.querySelector<HTMLDivElement>("#project-list")!;
   list.innerHTML = projects.length ? projects.map((project) => {
-    const latest = project.renders.at(-1);
-    const status = latest?.status === "completed" && latest.output ? "MP4 已生成" : latest?.status ?? "尚未生成";
+    const status = statuses.get(project.id) ?? "尚未生成";
     const actionId = `project-actions-${project.id}`;
     return `<div class="project-row" data-project-row="${project.id}"><button class="project-item" data-project-id="${project.id}" aria-controls="${actionId}"><strong>${escapeHtml(project.name)}</strong><small>${status}</small></button><div class="project-actions" id="${actionId}"><button class="project-delete" type="button" data-delete-project="${project.id}" aria-label="展開刪除 ${escapeHtml(project.name)}" aria-expanded="false" aria-controls="${actionId}">×</button><button class="project-delete-confirm" type="button" data-confirm-delete="${project.id}" aria-label="確認刪除 ${escapeHtml(project.name)}" aria-hidden="true" tabindex="-1">刪除</button></div></div>`;
   }).join("") : '<p class="empty-projects">專案與輸出只會儲存在這個瀏覽器。</p>';
@@ -301,10 +381,43 @@ async function refreshProjects(): Promise<void> {
   list.querySelectorAll<HTMLButtonElement>("[data-confirm-delete]").forEach((button) => button.addEventListener("click", async () => {
     const id = button.dataset.confirmDelete!;
     button.disabled = true;
-    await projectService.deleteProject(id);
+    workspaceNavigationToken += 1;
+    if (currentProjectId === id) invalidateMediaRequests();
+    await cancelActiveRenderForNavigation(id);
+    const recoverySnapshot = currentProjectId === id ? captureProjectSaveSnapshot() : undefined;
+    await cancelProjectSaves(id);
+    try {
+      await projectService.deleteProject(id);
+    } catch (error) {
+      projectSaveCoordinator.restoreProject(id);
+      if (recoverySnapshot && currentProjectId === id) scheduleProjectSave();
+      expandedProjectId = id;
+      button.disabled = false;
+      let message = error instanceof Error ? `無法刪除專案：${error.message}` : "無法刪除專案。";
+      try {
+        await refreshProjects();
+      } catch (refreshError) {
+        const detail = refreshError instanceof Error ? refreshError.message : String(refreshError);
+        message = `${message}（專案列表更新失敗：${detail}）`;
+      }
+      renderStatus.textContent = message;
+      return;
+    }
+    volatileOutputs.delete(id);
     if (currentProjectId === id) resetDraft();
-    await refreshProjects();
+    try {
+      await refreshProjects();
+    } catch (error) {
+      renderStatus.textContent = error instanceof Error
+        ? `專案已刪除，但列表更新失敗：${error.message}`
+        : "專案已刪除，但列表更新失敗。";
+    }
   }));
+  if (expandedProjectId) {
+    const expandedRow = list.querySelector<HTMLElement>(`.project-row[data-project-row="${expandedProjectId}"]`);
+    if (expandedRow) setProjectRowExpanded(expandedRow, true);
+    else expandedProjectId = null;
+  }
   const estimate = await projectService.estimateQuota();
   document.querySelector("#storage-usage")!.textContent = estimate.quotaBytes
     ? `本機儲存 ${formatBytes(estimate.usageBytes ?? 0)} / ${formatBytes(estimate.quotaBytes)}`
@@ -312,9 +425,29 @@ async function refreshProjects(): Promise<void> {
 }
 
 async function openProject(projectId: string): Promise<void> {
-  const project = await projectService.reopenProject(projectId); if (!project) return;
-  currentProjectId = project.id;
+  const navigationToken = ++workspaceNavigationToken;
+  invalidateMediaRequests();
+  await cancelActiveRenderForNavigation();
+  if (navigationToken !== workspaceNavigationToken) return;
+  await flushPendingSave();
+  if (navigationToken !== workspaceNavigationToken) return;
+  const project = await projectService.reopenProject(projectId);
+  if (!project || navigationToken !== workspaceNavigationToken) return;
   const config = project.configuration;
+  const coverUrl = config.coverImage?.value ?? null;
+  const backgroundUrl = config.backgroundImage?.value ?? null;
+  const [cover, background] = await Promise.all([
+    coverUrl ? loadPreviewImage(coverUrl).catch(() => null) : null,
+    backgroundUrl ? loadPreviewImage(backgroundUrl).catch(() => null) : null,
+  ]);
+  if (navigationToken !== workspaceNavigationToken) return;
+  const previousProjectId = currentProjectId;
+  workspaceToken += 1;
+  currentProjectId = project.id;
+  if (previousProjectId && previousProjectId !== project.id) {
+    releaseVolatileOutputOnLeave(previousProjectId);
+    clearOutputPreview();
+  }
   state.templateId = config.templateId;
   state.title = config.text.title; state.artist = config.text.artist;
   state.aspectRatio = config.output.aspectRatio; state.frameRate = config.output.frameRate;
@@ -322,9 +455,9 @@ async function openProject(projectId: string): Promise<void> {
   state.presetId = preset?.id ?? OUTPUT_PRESETS[state.aspectRatio][0].id;
   state.audioFile = null; state.duration = null;
   document.querySelector<HTMLInputElement>("#audio-input")!.value = "";
-  state.coverUrl = config.coverImage?.value ?? null; state.backgroundUrl = config.backgroundImage?.value ?? null;
-  previewAssets.cover = state.coverUrl ? await loadPreviewImage(state.coverUrl).catch(() => null) : null;
-  previewAssets.background = state.backgroundUrl ? await loadPreviewImage(state.backgroundUrl).catch(() => null) : null;
+  state.coverUrl = coverUrl; state.backgroundUrl = backgroundUrl;
+  previewAssets.cover = cover;
+  previewAssets.background = background;
   updateImagePicker("coverUrl", previewAssets.cover, config.coverImage ? "已保存封面圖" : undefined);
   updateImagePicker("backgroundUrl", previewAssets.background, config.backgroundImage ? "已保存背景圖" : undefined);
   document.querySelector<HTMLInputElement>("#cover-input")!.value = "";
@@ -339,20 +472,43 @@ async function openProject(projectId: string): Promise<void> {
 }
 
 async function showLatestOutput(project: ProjectRecord): Promise<void> {
-  const latest = [...project.renders].reverse().find((render) => render.status === "completed");
+  if (currentProjectId !== project.id) return;
+  const actions = document.querySelector<HTMLDivElement>("#output-actions")!;
+  const volatile = volatileOutputs.get(project.id);
+  if (volatile) {
+    presentOutputBlob(project.id, volatile.renderId, volatile.blob, volatile.projectName);
+    renderStatus.textContent = "最新生成版本僅保留在此分頁，可預覽或下載；關閉分頁前請先下載。";
+    return;
+  }
+  const completed = [...project.renders].reverse().filter((render) => render.status === "completed");
+  if (!completed.length) { clearOutputPreview(); actions.hidden = true; return; }
+  for (const [index, render] of completed.entries()) {
+    const stored = await projectService.getOutput(project.id, render.id);
+    if (currentProjectId !== project.id) return;
+    if (!stored) continue;
+    presentOutputBlob(project.id, render.id, stored.blob, project.name);
+    renderStatus.textContent = index === 0
+      ? "本機 MP4 可預覽與下載"
+      : "最新版本未保存在本機；目前顯示的是較舊的已保存版本。";
+    return;
+  }
+  if (currentProjectId !== project.id) return;
+  clearOutputPreview();
+  actions.hidden = true;
+  renderStatus.textContent = "本機 MP4 已不存在；請重新上傳音訊生成。";
+}
+
+function presentOutputBlob(projectId: string, renderId: string, blob: Blob, projectName: string): void {
+  if (currentProjectId !== projectId) return;
   const actions = document.querySelector<HTMLDivElement>("#output-actions")!;
   const video = document.querySelector<HTMLVideoElement>("#output-preview")!;
-  if (!latest) { clearOutputPreview(); actions.hidden = true; return; }
-  const stored = await projectService.getOutput(project.id, latest.id);
-  if (!stored) { clearOutputPreview(); actions.hidden = true; document.querySelector("#render-status")!.textContent = "本機 MP4 已不存在；請重新上傳音訊生成。"; return; }
   const link = document.querySelector<HTMLAnchorElement>("#download-link")!;
   const placeholder = document.querySelector<HTMLDivElement>("#video-placeholder")!;
   revokeCurrentOutputUrl();
-  currentOutputUrl = URL.createObjectURL(stored.blob);
-  link.href = currentOutputUrl; link.download = `${safeFileName(project.name)}.mp4`;
+  currentOutputUrl = URL.createObjectURL(blob);
+  link.href = currentOutputUrl; link.download = `${safeFileName(projectName)}.mp4`;
   video.src = currentOutputUrl; video.hidden = false; placeholder.hidden = true;
-  actions.dataset.renderId = latest.id; actions.hidden = false;
-  document.querySelector("#render-status")!.textContent = "本機 MP4 可預覽與下載";
+  actions.dataset.renderId = renderId; actions.hidden = false;
 }
 
 function revokeCurrentOutputUrl(): void {
@@ -368,7 +524,19 @@ function clearOutputPreview(): void {
   document.querySelector<HTMLAnchorElement>("#download-link")!.removeAttribute("href");
 }
 
+function releaseVolatileOutputOnLeave(projectId: string): void {
+  if (!volatileOutputs.delete(projectId)) return;
+  const row = [...document.querySelectorAll<HTMLElement>(".project-row")]
+    .find((candidate) => candidate.dataset.projectRow === projectId);
+  const status = row?.querySelector<HTMLElement>("small");
+  if (status) status.textContent = "MP4 未保存";
+}
+
 function resetDraft(): void {
+  if (currentProjectId) releaseVolatileOutputOnLeave(currentProjectId);
+  workspaceNavigationToken += 1;
+  invalidateMediaRequests();
+  abandonPendingSave();
   currentProjectId = null; state.templateId = "spectrum-cover"; state.aspectRatio = "16:9"; state.presetId = "16-9-1080p"; state.frameRate = 30;
   state.title = "Midnight Signal"; state.artist = "Your Artist"; state.audioFile = null; state.duration = null; state.coverUrl = null; state.backgroundUrl = null;
   document.querySelector<HTMLInputElement>("#audio-input")!.value = "";
@@ -383,18 +551,32 @@ function resetDraft(): void {
   setFileStatus("尚未選擇音訊"); renderTemplateCards(); populateOutputControls(); updateOutputLabels();
 }
 
+async function startNewDraft(): Promise<void> {
+  const navigationToken = ++workspaceNavigationToken;
+  invalidateMediaRequests();
+  await cancelActiveRenderForNavigation();
+  if (navigationToken !== workspaceNavigationToken) return;
+  if (currentProjectId) await flushPendingSave();
+  if (navigationToken !== workspaceNavigationToken) return;
+  resetDraft();
+}
+
 function escapeHtml(value: string): string {
   return value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]!);
 }
 
 function safeFileName(value: string): string { return value.trim().replace(/[^a-z0-9\-_]+/gi, "-").replace(/^-|-$/g, "") || "music-visualizer"; }
 
-async function decodeAudioForRender(file: File): Promise<AudioBuffer> {
+async function decodeAudioForRender(file: File, isCurrent: () => boolean): Promise<AudioBuffer> {
   const AudioContextCtor = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextCtor) throw new Error("瀏覽器無法解碼音訊。請改用最新版 Chrome 或 Edge。");
   const audioContext = new AudioContextCtor();
   try {
-    return await audioContext.decodeAudioData(await file.arrayBuffer());
+    const bytes = await file.arrayBuffer();
+    if (!isCurrent()) throw new Error("音訊解碼請求已失效。");
+    const decoded = await audioContext.decodeAudioData(bytes);
+    if (!isCurrent()) throw new Error("音訊解碼請求已失效。");
+    return decoded;
   } finally {
     await audioContext.close().catch(() => undefined);
   }
@@ -408,49 +590,86 @@ function setRenderProgress(progress: number, message: string): void {
 }
 
 async function startRender(): Promise<void> {
-  if (!state.audioFile || !capabilitySupported || renderController) return;
-  cancelRequested = false;
+  if (!state.audioFile || !capabilitySupported || activeRenderSession) return;
   const sourceAudio = state.audioFile;
-  let project: ProjectRecord | undefined;
-  let renderId: string | undefined;
+  let resolveFinished!: () => void;
+  const finished = new Promise<void>((resolve) => { resolveFinished = resolve; });
+  const session: ActiveRenderSession = {
+    workspaceToken,
+    sourceAudio,
+    ...(currentProjectId ? { projectId: currentProjectId } : {}),
+    cancelRequested: false,
+    finalized: false,
+    updates: Promise.resolve(),
+    finished,
+    resolveFinished,
+  };
+  activeRenderSession = session;
   try {
     renderButton.disabled = true;
     cancelButton.hidden = false;
     setRenderProgress(0, "正在解碼音訊…");
-    project = await saveProject();
-    const renderRecord = await projectService.queueRender(project.id);
-    renderId = renderRecord.id;
-    activeProjectId = project.id;
-    activeRenderId = renderId;
-    const audioBuffer = await decodeAudioForRender(sourceAudio);
+    const project = await saveProject();
+    if (session.finalized) return;
+    session.projectId = project.id;
+    if (session.cancelRequested) {
+      await cancelRenderSession(session);
+      return;
+    }
+    const renderRecord = await projectSaveCoordinator.runExclusive(() => projectService.queueRender(project.id));
+    if (session.finalized) return;
+    session.renderId = renderRecord.id;
+    if (session.cancelRequested) {
+      await cancelRenderSession(session);
+      return;
+    }
+    const audioBuffer = await decodeAudioForRender(sourceAudio, () => (
+      activeRenderSession === session && session.workspaceToken === workspaceToken && !session.finalized
+    ));
+    if (session.finalized) return;
+    if (session.cancelRequested) {
+      await cancelRenderSession(session);
+      return;
+    }
     const renderConfig = renderConfigFromDomain(project.configuration);
     const currentCapability = await detectCapabilities(renderConfig.output);
+    if (session.finalized) return;
     if (!currentCapability.supported) throw new Error(currentCapability.reasons.join(" "));
-    if (cancelRequested) {
-      await projectService.markCancelled(project.id, renderId);
-      await finishRenderSession("渲染已取消，專案設定仍保留。", false);
+    if (session.cancelRequested) {
+      await cancelRenderSession(session);
       return;
     }
     const worker = new Worker(new URL("./workers/render-worker.ts", import.meta.url), { type: "module" });
-    worker.onerror = (event) => void handleRenderFailure(new Error(event.message || "渲染 Worker 發生錯誤。"));
-    renderController = new RenderController(worker);
-    renderController.onUpdate((update) => void handleRenderUpdate(update));
-    renderController.startFromAudioBuffer(renderConfig, audioBuffer, renderId);
+    worker.onerror = (event) => enqueueRenderUpdate(session, () => failRenderSession(
+      session,
+      new Error(event.message || "渲染 Worker 發生錯誤。"),
+      "worker-error",
+    ));
+    const controller = new RenderController(worker);
+    session.controller = controller;
+    controller.onUpdate((update) => enqueueRenderUpdate(session, () => handleRenderUpdate(session, update)));
+    controller.startFromAudioBuffer(renderConfig, audioBuffer, renderRecord.id);
   } catch (error) {
-    if (project && renderId) {
-      await projectService.markFailed(project.id, renderId, {
-        code: "render-start",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-    await finishRenderSession(error instanceof Error ? error.message : "無法開始渲染。", false);
+    await failRenderSession(
+      session,
+      error instanceof Error ? error : new Error(String(error)),
+      "render-start",
+    );
   }
 }
 
-async function handleRenderUpdate(update: RenderUpdate): Promise<void> {
-  if (!activeProjectId || !activeRenderId) return;
+function enqueueRenderUpdate(session: ActiveRenderSession, operation: () => Promise<void>): void {
+  session.updates = session.updates.then(operation).catch((error) => failRenderSession(
+    session,
+    error instanceof Error ? error : new Error(String(error)),
+    "render-update",
+  ));
+}
+
+async function handleRenderUpdate(session: ActiveRenderSession, update: RenderUpdate): Promise<void> {
+  if (activeRenderSession !== session || session.finalized || !session.projectId || !session.renderId) return;
   if (update.response.type === "start") {
-    await projectService.markRendering(activeProjectId, activeRenderId);
+    await projectSaveCoordinator.runExclusive(() => projectService.markRendering(session.projectId!, session.renderId!));
     setRenderProgress(0, "正在瀏覽器中生成 MP4…");
     return;
   }
@@ -459,62 +678,137 @@ async function handleRenderUpdate(update: RenderUpdate): Promise<void> {
     return;
   }
   if (update.response.type === "complete") {
+    if (!claimRenderSession(session)) return;
     const { output, metadata } = update.response;
-    const result = await projectService.recordCompletedRender(activeProjectId, activeRenderId, output, {
-      mimeType: "video/mp4",
-      byteLength: output.size,
-      durationMs: metadata.duration * 1000,
-      width: metadata.width,
-      height: metadata.height,
-      frameRate: metadata.frameRate,
-      createdAt: new Date().toISOString(),
-    });
-    const project = await projectService.reopenProject(activeProjectId);
-    if (project) await showLatestOutput(project);
-    await finishRenderSession(
-      result.outputSaved
-        ? "MP4 已生成並保存在本機瀏覽器"
-        : "MP4 已生成，但本機空間不足；請直接下載並刪除舊輸出。",
-      true,
-    );
+    const projectName = state.title.trim() || "Untitled Project";
+    volatileOutputs.delete(session.projectId);
+    volatileOutputs.set(session.projectId, { renderId: session.renderId, blob: output, projectName });
+    presentOutputBlob(session.projectId, session.renderId, output, projectName);
+    let message = "MP4 已生成，但未能保存到本機；目前仍可預覽與下載，關閉分頁前請先下載。";
+    try {
+      const result = await projectSaveCoordinator.runExclusive(() => projectService.recordCompletedRender(session.projectId!, session.renderId!, output, {
+        mimeType: "video/mp4",
+        byteLength: output.size,
+        durationMs: metadata.duration * 1000,
+        width: metadata.width,
+        height: metadata.height,
+        frameRate: metadata.frameRate,
+        createdAt: new Date().toISOString(),
+      }));
+      if (result.outputSaved) {
+        volatileOutputs.delete(session.projectId);
+        message = "MP4 已生成並保存在本機瀏覽器";
+      } else {
+        message = "MP4 已生成，但本機空間不足；目前仍可預覽與下載，關閉分頁前請先下載。";
+      }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      message = `MP4 已生成，但保存失敗（${detail}）；目前仍可預覽與下載。`;
+    } finally {
+      await finishRenderSession(session, message, true);
+    }
     return;
   }
   if (update.response.type === "cancel") {
-    await projectService.markCancelled(activeProjectId, activeRenderId);
-    await finishRenderSession("渲染已取消，專案設定仍保留。", false);
+    await cancelRenderSession(session);
     return;
   }
   if (update.response.type === "error") {
-    await projectService.markFailed(activeProjectId, activeRenderId, update.response.error);
-    await finishRenderSession(update.response.error.message, false);
+    await failRenderSession(session, new Error(update.response.error.message), update.response.error.code);
   }
 }
 
-async function handleRenderFailure(error: Error): Promise<void> {
-  if (activeProjectId && activeRenderId) {
-    await projectService.markFailed(activeProjectId, activeRenderId, {
-      code: "worker-error",
-      message: error.message,
-    }).catch(() => undefined);
-  }
-  await finishRenderSession(error.message, false);
+function claimRenderSession(session: ActiveRenderSession): boolean {
+  if (activeRenderSession !== session || session.finalized) return false;
+  session.finalized = true;
+  return true;
 }
 
-async function finishRenderSession(message: string, completed: boolean): Promise<void> {
-  renderController?.dispose();
-  renderController = null;
-  cancelRequested = false;
-  activeProjectId = null;
-  activeRenderId = null;
-  state.audioFile = null;
-  state.duration = null;
-  document.querySelector<HTMLInputElement>("#audio-input")!.value = "";
-  updateAudioPicker(null);
-  cancelButton.hidden = true;
-  renderButton.disabled = true;
-  setRenderProgress(completed ? 1 : 0, message);
-  setFileStatus("來源音訊已從工作階段釋放；重新生成時請再次選擇。", completed ? "success" : "");
-  await refreshProjects();
+async function cancelRenderSession(session: ActiveRenderSession): Promise<void> {
+  if (!claimRenderSession(session)) return;
+  let message = "渲染已取消，專案設定仍保留。";
+  try {
+    if (session.projectId && session.renderId) {
+      await projectSaveCoordinator.runExclusive(() => projectService.markCancelled(session.projectId!, session.renderId!));
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    message = `渲染已取消，但無法更新本機紀錄：${detail}`;
+  } finally {
+    await finishRenderSession(session, message, false);
+  }
+}
+
+async function failRenderSession(session: ActiveRenderSession, error: Error, code: string): Promise<void> {
+  if (!claimRenderSession(session)) return;
+  let message = error.message;
+  try {
+    if (session.projectId && session.renderId) {
+      await projectSaveCoordinator.runExclusive(() => projectService.markFailed(session.projectId!, session.renderId!, { code, message: error.message }));
+    }
+  } catch (storageError) {
+    const detail = storageError instanceof Error ? storageError.message : String(storageError);
+    message = `${error.message}（無法更新本機紀錄：${detail}）`;
+  } finally {
+    await finishRenderSession(session, message, false);
+  }
+}
+
+async function finishRenderSession(session: ActiveRenderSession, message: string, completed: boolean): Promise<void> {
+  try {
+    try {
+      session.controller?.dispose();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      message = `${message}（Worker 清理失敗：${detail}）`;
+    }
+    session.controller = undefined;
+    if (activeRenderSession === session) activeRenderSession = null;
+    const ownsWorkspace = session.workspaceToken === workspaceToken;
+    cancelButton.hidden = true;
+    if (ownsWorkspace) {
+      setRenderProgress(completed ? 1 : 0, message);
+      if (state.audioFile === session.sourceAudio) {
+        state.audioFile = null;
+        state.duration = null;
+        document.querySelector<HTMLInputElement>("#audio-input")!.value = "";
+        updateAudioPicker(null);
+        renderButton.disabled = true;
+        setFileStatus("來源音訊已從工作階段釋放；重新生成時請再次選擇。", completed ? "success" : "");
+      } else {
+        renderButton.disabled = !state.audioFile || !capabilitySupported;
+      }
+    } else {
+      renderButton.disabled = !state.audioFile || !capabilitySupported;
+    }
+    try {
+      await refreshProjects();
+    } catch (error) {
+      if (ownsWorkspace) {
+        const detail = error instanceof Error ? error.message : String(error);
+        renderStatus.textContent = `${message}（專案列表更新失敗：${detail}）`;
+      }
+    }
+  } finally {
+    session.resolveFinished();
+  }
+}
+
+async function cancelActiveRenderForNavigation(projectId?: string): Promise<void> {
+  const session = activeRenderSession;
+  if (!session || (projectId && session.projectId !== projectId)) return;
+  if (session.finalized) {
+    await session.finished;
+    return;
+  }
+  session.cancelRequested = true;
+  if (!session.renderId) {
+    await session.finished;
+    return;
+  }
+  session.controller?.cancel();
+  enqueueRenderUpdate(session, () => cancelRenderSession(session));
+  await session.finished;
 }
 
 function currentPreset() {
@@ -535,18 +829,21 @@ function updateOutputLabels(): void {
 }
 
 async function refreshCapability(): Promise<void> {
+  const requestToken = capabilityRequests.begin();
   capability.textContent = "正在檢查編碼能力…";
   try {
     const result = await detectCapabilities(renderConfigFromDomain(configurationFromState()).output);
+    if (!capabilityRequests.isCurrent(requestToken)) return;
     capabilitySupported = result.supported;
     capability.textContent = result.supported ? "本機 MP4 編碼可用" : result.reasons.join(" ");
     capability.style.color = result.supported ? "#64f0d0" : "#ff6f88";
   } catch (error) {
+    if (!capabilityRequests.isCurrent(requestToken)) return;
     capabilitySupported = false;
     capability.textContent = error instanceof Error ? error.message : "無法檢查編碼能力";
     capability.style.color = "#ff6f88";
   }
-  renderButton.disabled = !state.audioFile || !capabilitySupported || Boolean(renderController);
+  renderButton.disabled = !state.audioFile || !capabilitySupported || Boolean(activeRenderSession);
 }
 
 function drawPreview(time: number): void {
@@ -595,15 +892,33 @@ function updateAudioPicker(file: File | null): void {
 }
 
 async function inspectAudio(file: File): Promise<void> {
+  const requestId = audioRequests.begin();
+  cancelPendingAudioInspection?.();
+  const requestWorkspace = workspaceToken;
+  const isCurrent = () => audioRequests.isCurrent(requestId) && workspaceToken === requestWorkspace;
   const problem = validateAudioFile(file);
-  if (problem) { state.audioFile = null; state.duration = null; renderButton.disabled = true; updateAudioPicker(null); setFileStatus(problem, "error"); return; }
+  if (problem) {
+    if (isCurrent()) { state.audioFile = null; state.duration = null; renderButton.disabled = true; updateAudioPicker(null); setFileStatus(problem, "error"); }
+    return;
+  }
   const url = URL.createObjectURL(file);
   const audio = new Audio(); audio.preload = "metadata"; audio.src = url;
+  let cancelInspection: (() => void) | undefined;
   try {
     const duration = await new Promise<number>((resolve, reject) => {
-      audio.onloadedmetadata = () => resolve(audio.duration);
-      audio.onerror = () => reject(new Error("無法解碼這個音訊檔案。"));
+      let settled = false;
+      const finish = (value: number | Error): void => {
+        if (settled) return;
+        settled = true;
+        if (value instanceof Error) reject(value);
+        else resolve(value);
+      };
+      cancelInspection = () => finish(new Error("音訊 metadata 請求已失效。"));
+      cancelPendingAudioInspection = cancelInspection;
+      audio.onloadedmetadata = () => finish(audio.duration);
+      audio.onerror = () => finish(new Error("無法解碼這個音訊檔案。"));
     });
+    if (!isCurrent()) return;
     const durationProblem = validateAudioDuration(duration);
     if (durationProblem) throw new Error(durationProblem);
     state.audioFile = file; state.duration = duration;
@@ -611,20 +926,16 @@ async function inspectAudio(file: File): Promise<void> {
     renderButton.disabled = false;
     setFileStatus(`${file.name} · ${formatBytes(file.size)} · ${Math.floor(duration / 60)}:${String(Math.round(duration % 60)).padStart(2, "0")}`, "success");
     await refreshCapability();
+    if (!isCurrent()) return;
     scheduleProjectSave();
   } catch (error) {
+    if (!isCurrent()) return;
     state.audioFile = null; state.duration = null; renderButton.disabled = true; updateAudioPicker(null);
     setFileStatus(error instanceof Error ? error.message : "無法讀取音訊。", "error");
-  } finally { URL.revokeObjectURL(url); audio.removeAttribute("src"); audio.load(); }
-}
-
-function readDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("無法讀取圖片。"));
-    reader.onerror = () => reject(reader.error ?? new Error("無法讀取圖片。"));
-    reader.readAsDataURL(file);
-  });
+  } finally {
+    if (cancelInspection && cancelPendingAudioInspection === cancelInspection) cancelPendingAudioInspection = null;
+    URL.revokeObjectURL(url); audio.removeAttribute("src"); audio.load();
+  }
 }
 
 function loadPreviewImage(url: string): Promise<HTMLImageElement> {
@@ -634,6 +945,14 @@ function loadPreviewImage(url: string): Promise<HTMLImageElement> {
 }
 
 type ImageTarget = "coverUrl" | "backgroundUrl";
+
+function invalidateMediaRequests(): void {
+  audioRequests.begin();
+  cancelPendingAudioInspection?.();
+  cancelPendingAudioInspection = null;
+  imageRequests.coverUrl.begin();
+  imageRequests.backgroundUrl.begin();
+}
 
 function imagePickerIds(target: ImageTarget): { dropzone: string; input: string; preview: string; name: string; remove: string } {
   return target === "coverUrl"
@@ -672,19 +991,22 @@ function attachImageInput(target: ImageTarget): void {
   const dropzone = document.querySelector<HTMLElement>(ids.dropzone)!;
   const remove = document.querySelector<HTMLButtonElement>(ids.remove)!;
   const applyFile = async (file: File): Promise<void> => {
-    if (!file.type.startsWith("image/")) {
-      setFileStatus("請選擇 PNG、JPEG 或 WebP 圖片。", "error");
-      return;
-    }
+    const requestId = imageRequests[target].begin();
+    const requestWorkspace = workspaceToken;
+    const isCurrent = () => imageRequests[target].isCurrent(requestId) && workspaceToken === requestWorkspace;
     try {
-      const dataUrl = await readDataUrl(file);
-      const image = await loadPreviewImage(dataUrl);
-      state[target] = dataUrl;
-      if (target === "coverUrl") previewAssets.cover = image; else previewAssets.background = image;
-      updateImagePicker(target, image, file.name);
+      const normalized = await normalizeImageFile(file, { isCurrent });
+      if (!isCurrent()) {
+        normalized.image.src = "";
+        return;
+      }
+      state[target] = normalized.dataUrl;
+      if (target === "coverUrl") previewAssets.cover = normalized.image; else previewAssets.background = normalized.image;
+      updateImagePicker(target, normalized.image, normalized.resized ? `${file.name}（已縮放）` : file.name);
       drawPreview(performance.now() / 1000);
       scheduleProjectSave();
     } catch (error) {
+      if (!isCurrent()) return;
       setFileStatus(error instanceof Error ? error.message : "無法讀取圖片。", "error");
     }
   };
@@ -705,6 +1027,7 @@ function attachImageInput(target: ImageTarget): void {
     if (file) void applyFile(file);
   });
   remove.addEventListener("click", () => {
+    imageRequests[target].begin();
     state[target] = null;
     if (target === "coverUrl") previewAssets.cover = null; else previewAssets.background = null;
     input.value = "";
@@ -737,12 +1060,19 @@ attachImageInput("backgroundUrl");
 ratioSelect.addEventListener("change", () => { state.aspectRatio = ratioSelect.value as AspectRatio; updateResolutionOptions(); scheduleProjectSave(); });
 resolutionSelect.addEventListener("change", () => { state.presetId = resolutionSelect.value; updateOutputLabels(); scheduleProjectSave(); });
 fpsSelect.addEventListener("change", () => { state.frameRate = Number(fpsSelect.value); updateOutputLabels(); scheduleProjectSave(); });
-document.querySelector<HTMLButtonElement>("#new-project")!.addEventListener("click", resetDraft);
+document.querySelector<HTMLButtonElement>("#new-project")!.addEventListener("click", () => {
+  void startNewDraft().catch((error) => {
+    renderStatus.textContent = error instanceof Error ? error.message : "無法切換到新專案。";
+  });
+});
 document.querySelector<HTMLButtonElement>("#delete-output")!.addEventListener("click", async () => {
   if (!currentProjectId) return;
+  const projectId = currentProjectId;
   const renderId = document.querySelector<HTMLDivElement>("#output-actions")!.dataset.renderId;
   if (!renderId) return;
-  await projectService.deleteOutput(currentProjectId, renderId);
+  await projectSaveCoordinator.runExclusive(() => projectService.deleteOutput(projectId, renderId));
+  if (volatileOutputs.get(projectId)?.renderId === renderId) volatileOutputs.delete(projectId);
+  if (currentProjectId !== projectId) return;
   document.querySelector<HTMLDivElement>("#output-actions")!.hidden = true;
   clearOutputPreview();
   await refreshProjects();
@@ -750,9 +1080,11 @@ document.querySelector<HTMLButtonElement>("#delete-output")!.addEventListener("c
 
 renderButton.addEventListener("click", () => void startRender());
 cancelButton.addEventListener("click", () => {
-  cancelRequested = true;
+  const session = activeRenderSession;
+  if (!session || session.finalized) return;
+  session.cancelRequested = true;
   renderStatus.textContent = "正在取消渲染…";
-  renderController?.cancel();
+  session.controller?.cancel();
 });
 
 renderTemplateCards();

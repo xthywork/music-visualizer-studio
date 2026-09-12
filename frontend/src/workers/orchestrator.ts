@@ -24,7 +24,11 @@ export class RenderController {
     return this.start(config, pcmSnapshotFromAudioBuffer(audioBuffer), audioBuffer.duration, jobId);
   }
   cancel() { if (this.jobId && (this.state === "queued" || this.state === "rendering")) this.worker.postMessage({ type: "cancel", jobId: this.jobId }); }
-  private receive(response: RenderWorkerResponse) { if (response.jobId !== this.jobId) return; this.state = transitionState(this.state, response.type); this.listener?.({ state: this.state, response }); }
+  private receive(response: RenderWorkerResponse) {
+    if (response.jobId !== this.jobId || this.state === "completed" || this.state === "cancelled" || this.state === "failed") return;
+    this.state = transitionState(this.state, response.type);
+    this.listener?.({ state: this.state, response });
+  }
   getState() { return this.state; }
   dispose() { this.worker.terminate?.(); this.listener = undefined; this.jobId = undefined; this.state = "idle"; }
 }
