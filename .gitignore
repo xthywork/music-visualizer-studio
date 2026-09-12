@@ -5,12 +5,14 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 
-# Frontend dependencies and build output
+# Frontend dependencies and transient output
 node_modules/
-dist/
 build/
 test-results/
 playwright-report/
+
+# frontend/dist is intentionally committed so a clean clone can be started
+# with `uv run music-visualizer` without installing the Node.js toolchain.
 
 # Local environment and editor files
 .env

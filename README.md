@@ -34,15 +34,30 @@ From another machine, use `http://<server-ip>:34388`. `0.0.0.0` is a server bind
 
 The server does not require a GPU for the MVP because rendering is performed in the user's browser. A future server-rendering fallback may use CPU workers and can later be deployed with GPU workers if scale requires it.
 
-## Local development
+## Run from a clean clone
 
-Install the locked backend environment with `uv`:
+The production frontend is included in the repository. With Python 3.12+ and
+`uv` installed, a normal user only needs:
 
 ```bash
-uv sync --frozen
+git clone <repo>
+cd <repo>
+uv run music-visualizer
 ```
 
-Install and build the TypeScript frontend:
+`uv` creates or synchronizes the Python environment from `uv.lock`
+automatically. Node.js and npm are not required to run the committed
+production application.
+
+The service listens on `0.0.0.0:34388` by default. Use
+`http://127.0.0.1:34388` locally or `http://<server-ip>:34388` from a trusted
+machine. `VISUALIZER_HOST` and `VISUALIZER_PORT` can override the defaults.
+
+## Local development
+
+Only developers changing files under `frontend/src` need the Node.js
+toolchain. Install dependencies and rebuild the committed production bundle
+with:
 
 ```bash
 cd frontend
@@ -51,15 +66,18 @@ npm run build
 cd ..
 ```
 
-Start the FastAPI service (which serves `frontend/dist`):
+After changing frontend source, verify and commit the corresponding updated
+files under `frontend/dist`; a source-only frontend change would leave clean
+clones serving a stale application.
+
+Backend developers can explicitly install the complete locked development
+environment with:
 
 ```bash
-uv run music-visualizer
+uv sync --frozen
 ```
 
-It listens on `0.0.0.0:34388` by default. Use `http://127.0.0.1:34388` locally
-or `http://<server-ip>:34388` from a trusted machine. `VISUALIZER_HOST` and
-`VISUALIZER_PORT` can override the defaults. For frontend-only hot reload:
+For frontend-only hot reload:
 
 ```bash
 cd frontend
