@@ -32,10 +32,10 @@
 
 - [x] 5.1 Implement argument-array-only FFmpeg/ffprobe adapters, sanitized stderr capture and process-group ownership; verify command construction cannot inject shell/path arguments and child failures produce stable error codes.
 - [x] 5.2 Implement real H.264 NVENC startup probe followed by ffprobe verification and injectable fake/software probes for tests; verify worker readiness blocks jobs when binaries, driver or encode session are unavailable.
-- [ ] 5.3 Implement one-frame-at-a-time RGB rawvideo streaming to FFmpeg with original audio, AAC, `yuv420p`, preset bitrates and atomic final output publication; verify low-resolution integration output has expected H.264/AAC streams, dimensions, fps and duration.
+- [x] 5.3 Implement one-frame-at-a-time RGB rawvideo streaming to FFmpeg with original audio, AAC, `yuv420p`, preset bitrates and atomic final output publication; verify low-resolution integration output has expected H.264/AAC streams, dimensions, fps and duration.
 - [x] 5.4 Implement progress, ETA, cancellation checks, FFmpeg terminate/kill and bounded stderr handling; verify cancellation under pipe backpressure exits all child processes and removes partial output.
 - [x] 5.5 Implement the independent worker loop and single-worker supervisor used by `uv run music-visualizer`; verify HTTP stays responsive during a fake long render and graceful shutdown leaves no orphan process.
-- [ ] 5.6 Add optional hardware integration tests and operator smoke commands for 720p, 1080p and 4K60 NVENC; verify the target 5070 Ti run and document the same acceptance procedure for the future RTX 3060.
+- [x] 5.6 Add optional hardware integration tests and operator smoke commands for 720p, 1080p and 4K60 NVENC; verify the target 5070 Ti run and document the same acceptance procedure for the future RTX 3060.
 
 ## 6. Frontend server-job migration
 
