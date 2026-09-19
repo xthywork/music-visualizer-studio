@@ -32,8 +32,8 @@ def valid_probe_payload() -> bytes:
                 {
                     "codec_name": "h264",
                     "pix_fmt": "yuv420p",
-                    "width": 64,
-                    "height": 64,
+                    "width": 1280,
+                    "height": 720,
                 }
             ]
         }
@@ -47,6 +47,8 @@ def test_probe_requires_real_encode_and_verified_h264_metadata(tmp_path: Path) -
     assert result.ready is True
     assert "h264_nvenc" in encoder.calls[0]
     assert "lavfi" in encoder.calls[0]
+    assert "color=c=black:s=1280x720:r=30:d=0.2" in encoder.calls[0]
+    assert encoder.calls[0][encoder.calls[0].index("-preset") + 1] == "p4"
     assert verifier.calls[0][-1].endswith("probe.mp4")
     assert not list(tmp_path.iterdir())
 
@@ -56,8 +58,8 @@ def test_probe_requires_real_encode_and_verified_h264_metadata(tmp_path: Path) -
     [
         b"{}",
         b'{"streams": []}',
-        b'{"streams": [{"codec_name": "hevc", "pix_fmt": "yuv420p", "width": 64, "height": 64}]}',
-        b'{"streams": [{"codec_name": "h264", "pix_fmt": "yuv444p", "width": 64, "height": 64}]}',
+        b'{"streams": [{"codec_name": "hevc", "pix_fmt": "yuv420p", "width": 1280, "height": 720}]}',
+        b'{"streams": [{"codec_name": "h264", "pix_fmt": "yuv444p", "width": 1280, "height": 720}]}',
         b"not json",
     ],
 )

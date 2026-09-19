@@ -96,10 +96,15 @@ class EncoderProbe:
             "-f",
             "lavfi",
             "-i",
-            "color=c=black:s=64x64:r=30:d=0.2",
+            # Probe the smallest supported production preset instead of a
+            # tiny synthetic frame that some NVENC generations reject even
+            # though every user-selectable output size is supported.
+            "color=c=black:s=1280x720:r=30:d=0.2",
             "-an",
             "-c:v",
             self.encoder,
+            "-preset",
+            "p4",
             "-profile:v",
             "high",
             "-pix_fmt",
@@ -136,8 +141,8 @@ class EncoderProbe:
         expected = {
             "codec_name": "h264",
             "pix_fmt": "yuv420p",
-            "width": 64,
-            "height": 64,
+            "width": 1280,
+            "height": 720,
         }
         if any(stream.get(key) != value for key, value in expected.items()):
             raise ValueError("preflight output metadata does not match policy")
