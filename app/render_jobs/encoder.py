@@ -55,6 +55,9 @@ def encoder_arguments(
     if not math.isfinite(duration) or duration <= 0:
         raise ValueError("duration must be positive and finite")
     bitrate = video_bitrate(output)
+    # NVENC and libx264 use different preset namespaces.  The software
+    # integration path must not inherit the production-only NVENC `p4` value.
+    preset = "p4" if encoder.endswith("_nvenc") else "veryfast"
     return [
         "-hide_banner",
         "-loglevel",
@@ -79,7 +82,7 @@ def encoder_arguments(
         "-c:v",
         encoder,
         "-preset",
-        "p4",
+        preset,
         "-profile:v",
         "high",
         "-b:v",

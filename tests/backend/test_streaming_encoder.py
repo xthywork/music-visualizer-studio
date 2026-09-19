@@ -43,6 +43,20 @@ def test_encoder_command_uses_raw_rgb_nvenc_aac_and_yuv420p(tmp_path: Path) -> N
     assert ";" not in joined
 
 
+def test_encoder_command_uses_encoder_specific_preset_namespaces(tmp_path: Path) -> None:
+    common = {
+        "audio_path": tmp_path / "audio.wav",
+        "partial_path": tmp_path / "output.part.mp4",
+        "duration": 1,
+    }
+    nvenc = encoder_arguments(output(), encoder="h264_nvenc", **common)
+    software = encoder_arguments(output(), encoder="libx264", **common)
+
+    assert nvenc[nvenc.index("-preset") + 1] == "p4"
+    assert software[software.index("-preset") + 1] == "veryfast"
+    assert "p4" not in software
+
+
 def test_bitrate_policy_covers_presets() -> None:
     assert video_bitrate(output()) == "8M"
     assert video_bitrate(output(fps=60)) == "12M"
