@@ -4,7 +4,7 @@ import { WebCodecsEncoderAdapter } from "../render/encoder";
 import { createMp4MuxerFactory, Mp4MuxerAdapter, type MuxerFactory } from "../render/muxer";
 import { createSceneAsync, disposeScene } from "../render/scenes";
 import { dimensionsFor, frameCount, type Scene } from "../render/types";
-import type { RenderWorkerRequest, RenderWorkerResponse } from "./protocol";
+import type { RenderWorkerRequest, RenderWorkerResponse, RenderPerformance } from "./protocol";
 
 export interface RenderRuntimeDeps {
   muxerFactory?: MuxerFactory;
@@ -27,12 +27,14 @@ export async function runRenderJob(request: Extract<RenderWorkerRequest, { type:
   let muxer: Mp4MuxerAdapter | undefined;
   let encoder: WebCodecsEncoderAdapter | undefined;
   let primaryError: unknown;
+  const jobStarted = performance.now();
   try {
     const capability = await (deps.capabilityDetector ?? detectCapabilities)(config.output, { muxer: true });
     if (!capability.supported) throw new Error(capability.reasons.join(" "));
     if (deps.isCancelled?.()) { post({ type: "cancel", jobId: request.jobId }); return; }
     const selectedPolicy = capability.policy;
     if (!selectedPolicy) throw new Error("Capability preflight returned no codec policy.");
+    const timings: RenderPerformance = { canvasMs: 0, videoFrameMs: 0, videoEncodeMs: 0, muxMs: 0, workerMs: 0, frames: 0, width: 0, height: 0, codec: selectedPolicy.video.containerCodec === "avc" ? "H.264" : "VP9" };
     const analysis = analyzePcmAudioSnapshot(audio); const dimensions = dimensionsFor(config.output); const totalFrames = frameCount(Math.min(duration, analysis.duration), config.output.frameRate);
     const canvas = (deps.canvasFactory ?? ((width, height) => new OffscreenCanvas(width, height)))(dimensions.width, dimensions.height);
     const context = canvas.getContext("2d");
@@ -53,6 +55,8 @@ export async function runRenderJob(request: Extract<RenderWorkerRequest, { type:
     await encoder.configure();
     const audioEncoded = await encoder.encodePcmSnapshot(audio, 1024, 48_000, isCancelled);
     if (!audioEncoded) { post({ type: "cancel", jobId: request.jobId }); return; }
+    // Drain audio before measuring video waits, so the final flush excludes pending audio.
+    await encoder.flush();
     // Analysis is already reduced to bounded waveform/spectrum arrays and the
     // encoder has consumed all PCM blocks. Release the transferred track before
     // allocating/encoding the potentially large video frame sequence.
@@ -60,21 +64,33 @@ export async function runRenderJob(request: Extract<RenderWorkerRequest, { type:
     const started = performance.now();
     for (let frame = 0; frame < totalFrames; frame++) {
       if (isCancelled()) { post({ type: "cancel", jobId: request.jobId }); return; }
-      const time = frame / config.output.frameRate; scene.render(context, { time, frame, progress: frame / Math.max(1, totalFrames - 1), width: dimensions.width, height: dimensions.height, analysis });
+      const time = frame / config.output.frameRate;
+      const drawStart = performance.now();
+      scene.render(context, { time, frame, progress: frame / Math.max(1, totalFrames - 1), width: dimensions.width, height: dimensions.height, analysis });
+      timings.canvasMs += performance.now() - drawStart;
       const VideoFrameCtor = (globalThis as any).VideoFrame;
       if (!VideoFrameCtor) throw new Error("VideoFrame is unavailable in this worker.");
+      const frameStart = performance.now();
       const videoFrame = new VideoFrameCtor(canvas, { timestamp: frame * 1_000_000 / config.output.frameRate, duration: 1_000_000 / config.output.frameRate });
+      timings.videoFrameMs += performance.now() - frameStart;
+      const encodeStart = performance.now(); const muxBefore = muxer.elapsedMs;
       try {
         if (!await encoder.encodeVideo(videoFrame, frame === 0, isCancelled)) { post({ type: "cancel", jobId: request.jobId }); return; }
-      } finally { videoFrame.close?.(); }
+      } finally {
+        timings.videoEncodeMs += Math.max(0, performance.now() - encodeStart - (muxer.elapsedMs - muxBefore));
+        videoFrame.close?.();
+      }
       const elapsedMs = performance.now() - started; const progress = (frame + 1) / totalFrames;
       post({ type: "progress", jobId: request.jobId, progress, frame: frame + 1, totalFrames, elapsedMs, etaMs: progress ? elapsedMs * (1 - progress) / progress : undefined });
       if (frame % 4 === 3) await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
+    const flushStart = performance.now(); const muxBefore = muxer.elapsedMs;
     await encoder.flush();
+    timings.videoEncodeMs += Math.max(0, performance.now() - flushStart - (muxer.elapsedMs - muxBefore));
     const output = muxer.finalize();
+    Object.assign(timings, { muxMs: muxer.elapsedMs, workerMs: performance.now() - jobStarted, frames: totalFrames, width: dimensions.width, height: dimensions.height });
     const counts = encoder.counts;
-    post({ type: "complete", jobId: request.jobId, output, metadata: { width: dimensions.width, height: dimensions.height, frameRate: config.output.frameRate, duration: analysis.duration, hasAudio: counts.audio > 0, hasVideo: counts.video > 0 } });
+    post({ type: "complete", jobId: request.jobId, output, performance: timings, metadata: { width: dimensions.width, height: dimensions.height, frameRate: config.output.frameRate, duration: analysis.duration, hasAudio: counts.audio > 0, hasVideo: counts.video > 0 } });
   } catch (error) {
     primaryError = error;
     throw error;

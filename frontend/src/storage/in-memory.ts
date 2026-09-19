@@ -86,7 +86,9 @@ export class InMemoryProjectStorage implements ProjectStorage {
     for (const project of await this.listProjects()) {
       let didChange = false;
       const renders = project.renders.map((render) => {
-        if (!isActiveRender(render.status)) return render;
+        // Server jobs continue independently when the browser closes. Only
+        // legacy browser-render records are interrupted on startup.
+        if (!isActiveRender(render.status) || render.server !== undefined) return render;
         didChange = true;
         return {
           ...render,
@@ -100,7 +102,9 @@ export class InMemoryProjectStorage implements ProjectStorage {
         const updated = { ...project, renders, updatedAt: now };
         await this.saveProject(updated);
         for (const render of project.renders) {
-          if (isActiveRender(render.status)) await this.deleteOutput(project.id, render.id);
+          if (isActiveRender(render.status) && render.server === undefined) {
+            await this.deleteOutput(project.id, render.id);
+          }
         }
         changed.push(updated);
       }

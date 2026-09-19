@@ -6,7 +6,7 @@ import { ProjectService } from "../src/ui/project-service";
 
 const configuration: RenderConfiguration = {
   schemaVersion: DOMAIN_SCHEMA_VERSION,
-  templateId: "spectrum-cover",
+  templateId: "quiet-editorial",
   text: { title: "Test", artist: "Artist" },
   output: { aspectRatio: "1:1", width: 1080, height: 1080, frameRate: 30 },
 };
@@ -73,6 +73,38 @@ describe("ProjectService", () => {
     expect(result.quotaError).toBeDefined();
     expect((await service.reopenProject(project.id))?.renders[0].status).toBe("completed");
     expect(await service.getOutput(project.id, render.id)).toBeUndefined();
+  });
+
+  it("persists authoritative server state and output URLs without saving a Blob", async () => {
+    const service = serviceFor(new InMemoryProjectStorage());
+    const project = await service.createProject("Server render", configuration);
+    const render = await service.queueRender(project.id, "render-server");
+    const queued = await service.updateServerRender(project.id, render.id, {
+      jobId: "job-server",
+      state: "queued",
+      outputAvailable: false,
+      statusConfirmed: true,
+      updatedAt: "2026-01-01T00:00:01.000Z",
+    });
+    expect(queued.status).toBe("queued");
+
+    const completed = await service.updateServerRender(project.id, render.id, {
+      jobId: "job-server",
+      state: "completed",
+      outputAvailable: true,
+      statusConfirmed: true,
+      updatedAt: "2026-01-01T00:00:02.000Z",
+      outputUrl: "/api/render-jobs/job-server/output",
+    });
+    expect(completed.status).toBe("completed");
+    expect(completed.output).toBeUndefined();
+    expect(completed.server?.outputUrl).toBe("/api/render-jobs/job-server/output");
+    expect(await service.getOutput(project.id, render.id)).toBeUndefined();
+
+    const unconfirmed = await service.markServerStatusUnconfirmed(project.id, render.id);
+    expect(unconfirmed.server?.state).toBe("completed");
+    expect(unconfirmed.server?.outputAvailable).toBe(true);
+    expect(unconfirmed.server?.statusConfirmed).toBe(false);
   });
 
   it("lists, reopens, deletes output only, and then deletes projects", async () => {

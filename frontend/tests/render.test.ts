@@ -8,7 +8,7 @@ import { freezeSnapshot, transitionState } from "../src/workers/protocol";
 import { renderConfigFromDomain, renderConfigToDomain } from "../src/render/domain-adapter";
 import { createMp4MuxerFactory, Mp4MuxerAdapter } from "../src/render/muxer";
 
-const config: RenderConfig = { schemaVersion: 1, template: { id: "spectrum-cover", title: "Test", artist: "Artist" }, output: { aspectRatio: "16:9", resolution: "720p", frameRate: 30 } };
+const config: RenderConfig = { schemaVersion: 1, template: { id: "quiet-editorial", title: "Test", artist: "Artist" }, output: { aspectRatio: "16:9", resolution: "720p", frameRate: 30 } };
 
 describe("render configuration and timing", () => {
   it("produces stable dimensions and frame timing for every aspect ratio", () => {
@@ -18,7 +18,7 @@ describe("render configuration and timing", () => {
     expect(createRenderTiming(config, 2)).toEqual({ totalFrames: 60, frameDuration: 1_000_000 / 30, secondsPerFrame: 1 / 30 });
   });
   it("round-trips the persisted domain configuration through the worker boundary", () => {
-    const domain = { schemaVersion: 1 as const, templateId: "vinyl-particle" as const, text: { title: "Song", artist: "Band" }, coverImage: { kind: "data-url" as const, value: "data:image/png;base64,x" }, output: { aspectRatio: "1:1" as const, width: 2160, height: 2160, frameRate: 60 as const } };
+    const domain = { schemaVersion: 1 as const, templateId: "paper-resonance" as const, text: { title: "Song", artist: "Band" }, coverImage: { kind: "data-url" as const, value: "data:image/png;base64,x" }, output: { aspectRatio: "1:1" as const, width: 2160, height: 2160, frameRate: 60 as const } };
     expect(renderConfigToDomain(renderConfigFromDomain(domain))).toEqual(domain);
   });
   it("maps 720p domain dimensions correctly in landscape and portrait", () => {
@@ -26,7 +26,7 @@ describe("render configuration and timing", () => {
       { aspectRatio: "16:9" as const, width: 1280, height: 720, frameRate: 30 as const },
       { aspectRatio: "9:16" as const, width: 720, height: 1280, frameRate: 30 as const },
     ]) {
-      const domain = { schemaVersion: 1 as const, templateId: "spectrum-cover" as const, text: { title: "", artist: "" }, output };
+      const domain = { schemaVersion: 1 as const, templateId: "quiet-editorial" as const, text: { title: "", artist: "" }, output };
       expect(renderConfigFromDomain(domain).output.resolution).toBe("720p");
     }
   });
@@ -166,6 +166,7 @@ describe("templates and worker states", () => {
     const gradient = { addColorStop() {} };
     const calls: string[] = [];
     const context = { createLinearGradient: () => gradient, createRadialGradient: () => gradient, fillRect: () => calls.push("fillRect"), beginPath: () => calls.push("beginPath"), arc: () => calls.push("arc"), fill: () => calls.push("fill"), stroke: () => calls.push("stroke"), moveTo: () => {}, lineTo: () => {}, quadraticCurveTo: () => {}, bezierCurveTo: () => {}, closePath: () => {}, save: () => {}, restore: () => {}, translate: () => {}, rotate: () => {}, measureText: (text: string) => ({ width: text.length * 6 }), fillText: () => calls.push("fillText"), set fillStyle(_: unknown) {}, set strokeStyle(_: unknown) {}, set lineWidth(_: unknown) {}, set font(_: unknown) {}, set textAlign(_: unknown) {} } as any;
+    context.rect = () => {}; context.clip = () => {};
     for (const id of TEMPLATE_IDS) { calls.length = 0; createScene(id, config.template).render(context, { time: .5, frame: 15, progress: .5, width: 320, height: 180, analysis }); expect(calls.length).toBeGreaterThan(0); }
   });
   it("transitions worker events and keeps terminal states immutable", () => {

@@ -1,57 +1,58 @@
-> Historical archive: these checkboxes describe the original implementation
-> change. Later revisions removed Abstract Pulse and changed parts of the
-> implementation; current behavior is documented under `docs/` and
-> `openspec/specs/`.
+> 歷史封存：這些核取方塊記錄最初的實作變更。後續版本已移除
+> Abstract Pulse，並調整部分實作；目前行為記錄於 `docs/` 與
+> `openspec/specs/`。
+>
+> [English](tasks.en.md)
 
-## 1. Application and service foundation
+## 1. 應用程式與服務基礎
 
-- [x] 1.1 Create the `uv`-managed Python project and FastAPI application skeleton, then verify dependency installation with `uv sync` and a passing health-endpoint test.
-- [x] 1.2 Create the TypeScript browser application shell and production build configuration, then verify the frontend type-checks and produces a distributable build.
-- [x] 1.3 Configure host and port defaults for `0.0.0.0:34388`, serve the built frontend from FastAPI, and verify `curl http://127.0.0.1:34388` returns the application and health endpoint responses.
-- [x] 1.4 Add a versioned render-configuration and project-state domain model shared by UI, worker, and storage layers, then verify serialization round-trips preserve all required fields.
+- [x] 1.1 建立由 `uv` 管理的 Python 專案與 FastAPI 應用程式骨架，並以 `uv sync` 及通過的健康檢查端點測試驗證相依套件安裝。
+- [x] 1.2 建立 TypeScript 瀏覽器應用程式外殼及 production build 設定，並確認前端型別檢查通過且可產生可部署成品。
+- [x] 1.3 設定 `0.0.0.0:34388` 的預設主機與連接埠，由 FastAPI 提供建置後的前端，並確認 `curl http://127.0.0.1:34388` 可取得應用程式與健康檢查回應。
+- [x] 1.4 新增 UI、Worker 與儲存層共用且具版本的渲染設定及專案狀態領域模型，並驗證序列化來回轉換會保留所有必要欄位。
 
-## 2. Browser workspace and input configuration
+## 2. 瀏覽器工作區與輸入設定
 
-- [x] 2.1 Implement audio file selection and validation for MP3, WAV, and M4A plus the 10-minute duration limit, and verify accepted and rejected fixtures show the required messages without starting a render.
-- [x] 2.2 Implement title, artist, cover-image, and background-image inputs with local preview handling, and verify template configuration updates without another audio selection.
-- [x] 2.3 Implement the template registry and selectable cards for Spectrum Cover, Vinyl Particle, and Abstract Pulse, and verify each template exposes a preview and stable identifier.
-- [x] 2.4 Implement aspect-ratio, resolution, and frame-rate selectors for 16:9, 9:16, and 1:1, and verify selected dimensions are displayed and invalid combinations cannot be submitted.
+- [x] 2.1 實作 MP3、WAV、M4A 音訊檔案選擇、驗證及 10 分鐘時長限制，並確認可接受與拒絕的測試檔案都會顯示所需訊息，且不會誤啟動渲染。
+- [x] 2.2 實作歌名、歌手、封面圖與背景圖輸入及本機預覽，並確認無需重新選擇音訊即可更新模板設定。
+- [x] 2.3 實作模板註冊表，以及 Spectrum Cover、Vinyl Particle、Abstract Pulse 選擇卡，並確認每個模板都有預覽及穩定識別碼。
+- [x] 2.4 實作 16:9、9:16、1:1 的畫面比例、解析度與幀率選擇器，並確認會顯示所選尺寸且無法送出無效組合。
 
-## 3. Capability detection and render orchestration
+## 3. 能力偵測與渲染協調
 
-- [x] 3.1 Implement runtime capability detection for the requested canvas, video encoder, audio encoder, and MP4 path, and verify supported and unsupported matrices produce the specified enabled or blocked states.
-- [x] 3.2 Define the Web Worker message protocol and immutable render-job snapshot, and verify start, progress, complete, cancel, and error messages update the corresponding UI state.
-- [x] 3.3 Implement in-memory audio decoding and waveform/spectrum/beat analysis with bounded buffers, and verify analysis completes for a short fixture and releases resources on terminal states.
-- [x] 3.4 Implement render cancellation and failure cleanup, and verify a cancelled or failed job leaves no downloadable partial output while preserving project configuration.
+- [x] 3.1 實作所需 Canvas、影音編碼器與 MP4 路徑的執行階段能力偵測，並確認支援與不支援矩陣會產生規定的啟用或阻擋狀態。
+- [x] 3.2 定義 Web Worker 訊息協定及不可變渲染工作快照，並確認 start、progress、complete、cancel、error 訊息會更新對應 UI 狀態。
+- [x] 3.3 實作有限緩衝區的記憶體內音訊解碼、波形／頻譜／節拍分析，並以短音訊測試確認分析可完成且在終止狀態釋放資源。
+- [x] 3.4 實作渲染取消與失敗清理，並確認取消或失敗的工作不留下可下載的部分輸出，同時保留專案設定。
 
-## 4. Visual templates and frame rendering
+## 4. 視覺模板與畫面渲染
 
-- [x] 4.1 Implement the renderer-independent scene interface and frame timing for the selected aspect ratio, resolution, and frame rate, and verify deterministic frames for a fixed configuration fixture.
-- [x] 4.2 Implement Spectrum Cover with reactive spectrum/waveform, title, artist, and image treatment, and verify representative frames at all three aspect ratios.
-- [x] 4.3 Implement Vinyl Particle with rotating-record and audio-reactive particle behavior, and verify representative frames at all three aspect ratios.
-- [x] 4.4 Implement Abstract Pulse with animated background, waveform, and beat-reactive effects, and verify representative frames at all three aspect ratios.
-- [x] 4.5 Add visual regression or golden-frame coverage for each initial template at a low-resolution test preset, and verify changes are detected without requiring 4K rendering.
+- [x] 4.1 實作不依賴渲染器的場景介面，以及符合所選比例、解析度與幀率的畫面計時，並確認固定設定測試資料可產生確定性畫面。
+- [x] 4.2 實作包含反應式頻譜／波形、歌名、歌手及圖片處理的 Spectrum Cover，並驗證三種畫面比例的代表畫面。
+- [x] 4.3 實作包含唱片旋轉及音訊反應粒子效果的 Vinyl Particle，並驗證三種畫面比例的代表畫面。
+- [x] 4.4 實作包含動畫背景、波形及節拍反應效果的 Abstract Pulse，並驗證三種畫面比例的代表畫面。
+- [x] 4.5 為每個初始模板加入低解析度測試預設的視覺迴歸或黃金畫面測試，並確認無需進行 4K 渲染即可偵測變更。
 
-## 5. Video encoding and MP4 output
+## 5. 影片編碼與 MP4 輸出
 
-- [x] 5.1 Implement the WebCodecs video/audio encoder adapter and codec configuration policy, and verify the adapter rejects unsupported configurations before queuing frames.
-- [x] 5.2 Implement the MP4 muxing adapter for encoded audio/video chunks, and verify a generated fixture opens as a playable MP4 with both tracks and expected metadata.
-- [x] 5.3 Connect worker frame production, encoding, and muxing into the completed render path, and verify duration, dimensions, frame rate, and audio/video track metadata for each aspect ratio.
-- [x] 5.4 Add progress estimation, long-render status messaging, and user cancellation controls, and verify the interface remains responsive while a representative worker render runs.
+- [x] 5.1 實作 WebCodecs 影音編碼器介面及編解碼設定策略，並確認介面會在畫面排入佇列前拒絕不支援的設定。
+- [x] 5.2 實作影音編碼區塊的 MP4 封裝介面，並確認生成的測試成品是包含雙軌及預期中繼資料的可播放 MP4。
+- [x] 5.3 將 Worker 畫面生成、編碼與封裝串接至完整渲染路徑，並驗證每種比例輸出的時長、尺寸、幀率及影音軌中繼資料。
+- [x] 5.4 新增進度估算、長時間渲染狀態訊息與使用者取消控制，並確認代表性 Worker 渲染執行時介面仍可回應。
 
-## 6. Local project and output storage
+## 6. 本機專案與輸出儲存
 
-- [x] 6.1 Implement the browser-local storage adapter for project metadata, render records, generated MP4 Blobs, deletion, and quota estimation, and verify CRUD and schema-version round-trips.
-- [x] 6.2 Ensure source audio is excluded from the persistence model and released after every render terminal state, and verify storage inspection contains no audio bytes or audio-file reference.
-- [x] 6.3 Persist completed MP4 output and handle quota failures while retaining unsaved project metadata, and verify the UI offers output deletion and a retry path.
-- [x] 6.4 Reconcile active render records on application startup as interrupted/unknown, and verify interrupted projects never appear to have a completed downloadable output.
-- [x] 6.5 Implement project listing, reopen, project deletion, and output-only deletion, and verify metadata remains available after output deletion and disappears after confirmed project deletion.
+- [x] 6.1 實作瀏覽器本機儲存介面，涵蓋專案中繼資料、渲染紀錄、生成的 MP4 Blob、刪除與配額估算，並驗證 CRUD 及結構版本來回轉換。
+- [x] 6.2 確保持久化模型排除來源音訊，且每種渲染終止狀態都會釋放音訊，並確認儲存內容不含音訊位元組或音訊檔案參照。
+- [x] 6.3 持久化完成的 MP4，並在保留未儲存專案中繼資料的同時處理配額失敗；確認 UI 提供輸出刪除及重試路徑。
+- [x] 6.4 應用程式啟動時將進行中的渲染紀錄校正為 interrupted／unknown，並確認中斷的專案絕不會顯示為具有可下載的完成輸出。
+- [x] 6.5 實作專案清單、重新開啟、刪除專案及只刪除輸出，並確認刪除輸出後仍保留中繼資料，確認刪除專案後則完全消失。
 
-## 7. Preview, download, and integration quality
+## 7. 預覽、下載與整合品質
 
-- [x] 7.1 Implement completed-output preview and download from local storage, and verify downloading does not request the source audio again.
-- [x] 7.2 Add an end-to-end happy-path test from audio selection through template/output configuration, render completion, local persistence, reopen, preview, and download.
-- [x] 7.3 Add failure-path tests for invalid audio, unsupported codec/device, cancellation, muxing failure, memory failure, browser reload, and local quota exhaustion, and verify each produces an actionable state.
-- [x] 7.4 Validate the primary desktop Chrome/Edge matrix with hardware acceleration enabled and disabled, and document observed supported presets and limitations.
-- [x] 7.5 Add deployment and run documentation for Ubuntu Server 24.04, `uv`, and `0.0.0.0:34388`, and verify a clean host can start the service and serve the built application.
-- [x] 7.6 Verify the MVP has no audio-upload API or server-side audio persistence, and verify repository checks pass without requiring a server GPU.
+- [x] 7.1 實作從本機儲存空間預覽及下載完成輸出，並確認下載時不會再次要求來源音訊。
+- [x] 7.2 新增端對端正常流程測試，涵蓋音訊選擇、模板／輸出設定、渲染完成、本機持久化、重新開啟、預覽與下載。
+- [x] 7.3 新增無效音訊、不支援的編解碼器／裝置、取消、封裝失敗、記憶體失敗、瀏覽器重新載入及本機配額耗盡等失敗路徑測試，並確認各情境都會產生可採取行動的狀態。
+- [x] 7.4 以開啟及關閉硬體加速的方式驗證主要桌面版 Chrome／Edge 矩陣，並記錄觀察到的支援預設與限制。
+- [x] 7.5 新增 Ubuntu Server 24.04、`uv` 與 `0.0.0.0:34388` 的部署及執行文件，並確認乾淨主機可啟動服務及提供已建置應用程式。
+- [x] 7.6 確認 MVP 沒有音訊上傳 API 或伺服器端音訊持久化，並確認 repository 檢查不需要伺服器 GPU 即可通過。

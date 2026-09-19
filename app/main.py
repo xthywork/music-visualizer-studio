@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import AsyncIterator
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.responses import Response
 
 from . import __version__
 from .config import Settings
+from .render_jobs.service import RenderJobService, RenderServiceError
+from .render_jobs.worker import WorkerSupervisor
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -25,7 +29,10 @@ def _frontend_directory(settings: Settings) -> Path:
     return Path(configured).expanduser().resolve() if configured else DEFAULT_FRONTEND_DIST
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    render_service: RenderJobService | None = None,
+) -> FastAPI:
     """Create the service application.
 
     Keeping app construction explicit makes the static-root behavior easy to
@@ -36,20 +43,99 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     frontend_dir = _frontend_directory(runtime)
     index_file = frontend_dir / "index.html"
 
+    @asynccontextmanager
+    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+        service = application.state.render_service
+        if not service.initialized:
+            service.initialize()
+        yield
+
     application = FastAPI(
         title="Music Visualizer",
         version=__version__,
         docs_url="/api/docs",
         redoc_url="/api/redoc",
         openapi_url="/api/openapi.json",
+        lifespan=lifespan,
     )
+    application.state.render_service = render_service or RenderJobService(runtime)
+
+    @application.exception_handler(RenderServiceError)
+    async def render_service_error(_request: Request, error: RenderServiceError) -> JSONResponse:
+        return JSONResponse(
+            {"error": {"code": error.code.value, "message": str(error)}},
+            status_code=error.status_code,
+        )
 
     @application.get("/health", include_in_schema=True)
     @application.get("/api/health", include_in_schema=True)
-    async def health() -> dict[str, str]:
-        """Report service liveness without inspecting or receiving audio."""
+    async def health() -> dict[str, str | bool]:
+        """Report HTTP liveness and render-worker readiness without leaking paths."""
 
-        return {"status": "ok", "service": "music-visualizer", "version": __version__}
+        service: RenderJobService = application.state.render_service
+        worker = service.readiness.get()
+        return {
+            "status": "ok" if worker.ready else "degraded",
+            "service": "music-visualizer",
+            "version": __version__,
+            "database": "ready" if service.initialized else "initializing",
+            "storage": "ready" if service.initialized else "initializing",
+            "renderWorkerReady": worker.ready,
+        }
+
+    @application.get("/api/render-capabilities")
+    async def render_capabilities():
+        service: RenderJobService = application.state.render_service
+        return service.capabilities()
+
+    @application.post("/api/render-jobs", status_code=201)
+    async def create_render_job(
+        config: str = Form(...),
+        audio: UploadFile = File(...),
+        cover: UploadFile | None = File(default=None),
+        background: UploadFile | None = File(default=None),
+        subtitles: UploadFile | None = File(default=None),
+    ):
+        service: RenderJobService = application.state.render_service
+        return await service.create(
+            config_json=config,
+            audio=audio,
+            cover=cover,
+            background=background,
+            subtitles=subtitles,
+        )
+
+    @application.get("/api/render-jobs/{job_id}")
+    async def get_render_job(job_id: str):
+        service: RenderJobService = application.state.render_service
+        return service.status(job_id)
+
+    @application.post("/api/render-jobs/{job_id}/cancel")
+    async def cancel_render_job(job_id: str):
+        service: RenderJobService = application.state.render_service
+        return service.cancel(job_id)
+
+    @application.delete("/api/render-jobs/{job_id}/output")
+    async def delete_render_output(job_id: str):
+        service: RenderJobService = application.state.render_service
+        return service.delete_output(job_id)
+
+    @application.delete("/api/render-jobs/{job_id}", status_code=204)
+    async def delete_render_job(job_id: str) -> Response:
+        service: RenderJobService = application.state.render_service
+        service.delete_job(job_id)
+        return Response(status_code=204)
+
+    @application.get("/api/render-jobs/{job_id}/output")
+    async def get_render_output(job_id: str) -> FileResponse:
+        service: RenderJobService = application.state.render_service
+        path, filename = service.output_path(job_id)
+        return FileResponse(
+            path,
+            media_type="video/mp4",
+            filename=filename,
+            content_disposition_type="inline",
+        )
 
     @application.get("/", include_in_schema=False, response_model=None)
     async def root() -> Response:
@@ -96,10 +182,21 @@ app = create_app()
 
 
 def run() -> None:
-    """Run the service using the documented environment-aware defaults."""
+    """Run HTTP and the independent renderer from the single documented command."""
 
     settings = Settings.from_env()
-    uvicorn.run("app.main:app", host=settings.host, port=settings.port, reload=False)
+    service = RenderJobService(settings)
+    service.initialize()
+    application = create_app(settings, service)
+    supervisor: WorkerSupervisor | None = None
+    if settings.worker_enabled:
+        supervisor = WorkerSupervisor(settings, service.readiness)
+        supervisor.start()
+    try:
+        uvicorn.run(application, host=settings.host, port=settings.port, reload=False)
+    finally:
+        if supervisor is not None:
+            supervisor.stop()
 
 
 if __name__ == "__main__":

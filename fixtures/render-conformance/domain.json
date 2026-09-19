@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "templateIds": [
+    "quiet-editorial",
+    "paper-resonance",
+    "panorama-lyrics",
+    "poetry-lyrics",
+    "night-orbit",
+    "dawn-spectrum"
+  ],
+  "outputs": [
+    { "aspectRatio": "16:9", "resolution": "720p", "width": 1280, "height": 720 },
+    { "aspectRatio": "16:9", "resolution": "1080p", "width": 1920, "height": 1080 },
+    { "aspectRatio": "16:9", "resolution": "4k", "width": 3840, "height": 2160 },
+    { "aspectRatio": "9:16", "resolution": "720p", "width": 720, "height": 1280 },
+    { "aspectRatio": "9:16", "resolution": "1080p", "width": 1080, "height": 1920 },
+    { "aspectRatio": "9:16", "resolution": "4k", "width": 2160, "height": 3840 },
+    { "aspectRatio": "1:1", "resolution": "720p", "width": 720, "height": 720 },
+    { "aspectRatio": "1:1", "resolution": "1080p", "width": 1080, "height": 1080 },
+    { "aspectRatio": "1:1", "resolution": "4k", "width": 2160, "height": 2160 }
+  ],
+  "defaults": {
+    "night-orbit": { "theme": "dark", "accent": "#8bbab8", "lineCount": 1 },
+    "dawn-spectrum": { "theme": "light", "accent": "#b77956", "lineCount": 1 },
+    "paper-resonance": { "theme": "light", "accent": "#b84330", "lineCount": 3 },
+    "quiet-editorial": { "theme": "dark", "accent": "#c9b99c", "lineCount": 1 },
+    "panorama-lyrics": { "theme": "dark", "accent": "#c9b99c", "lineCount": 1 },
+    "poetry-lyrics": { "theme": "light", "accent": "#8b735b", "lineCount": 1 }
+  },
+  "lyrics": {
+    "cues": [
+      { "start": 0, "text": "first" },
+      { "start": 2, "text": "second" },
+      { "start": 5, "text": "final" }
+    ],
+    "queries": [
+      { "time": -1, "active": -1 },
+      { "time": 0, "active": 0 },
+      { "time": 1.99, "active": 0 },
+      { "time": 2, "active": 1 },
+      { "time": 4.99, "active": 1 },
+      { "time": 100, "active": 2 }
+    ]
+  },
+  "placement": {
+    "source": { "width": 1200, "height": 800 },
+    "destination": { "x": 0, "y": 0, "width": 1600, "height": 900 },
+    "zoom": 1,
+    "panX": 0,
+    "panY": 0,
+    "expectedSource": [23.076923076923094, 75.48076923076923, 1176.923076923077, 724.5192307692307]
+  }
+}

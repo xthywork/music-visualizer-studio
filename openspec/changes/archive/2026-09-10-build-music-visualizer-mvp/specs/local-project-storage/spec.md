@@ -1,70 +1,71 @@
-> Historical archive: this delta spec records the original MVP change. The
-> current normative specification is
-> `openspec/specs/local-project-storage/spec.md`.
+> 歷史封存：此差異規格記錄最初的 MVP 變更。目前的規範性規格為
+> `openspec/specs/local-project-storage/spec.md`。
+>
+> [English](spec.en.md)
 
-## Purpose
+## 目的
 
-Keeps project history and generated videos available on the user's browser while ensuring that source audio is not retained, uploaded, or silently copied to a remote service.
+在使用者的瀏覽器中保留專案歷史與生成影片，同時確保來源音訊不會被保留、上傳或在未告知的情況下複製到遠端服務。
 
 ## ADDED Requirements
 
-### Requirement: Persist project history locally
+### Requirement: 在本機持久化專案歷史
 
-The system SHALL save each project configuration and its render history in browser-local storage, including template, text and image settings, aspect ratio, resolution, frame rate, timestamps, and render status.
+系統 SHALL 將每個專案設定與渲染歷史保存在瀏覽器本機儲存空間，包括模板、文字與圖片設定、畫面比例、解析度、幀率、時間戳記及渲染狀態。
 
-#### Scenario: Completed project is reopened
+#### Scenario: 重新開啟已完成的專案
 
-- **WHEN** the user returns to the application in the same browser and opens a saved project
-- **THEN** the system displays its configuration and completed output status without requiring the project to be recreated
+- **WHEN** 使用者在同一瀏覽器返回應用程式並開啟已儲存的專案
+- **THEN** 系統顯示其設定及已完成輸出狀態，不要求重新建立專案
 
-#### Scenario: Project is still rendering when the page closes
+#### Scenario: 頁面關閉時專案仍在渲染
 
-- **WHEN** the page is closed or reloaded while a render is running
-- **THEN** the project records that the render was interrupted or unknown and does not claim that an incomplete output is downloadable
+- **WHEN** 渲染進行期間關閉或重新載入頁面
+- **THEN** 專案將該次渲染記錄為已中斷或狀態未知，且不會宣稱未完成的輸出可供下載
 
-### Requirement: Retain generated MP4 locally
+### Requirement: 在本機保留生成的 MP4
 
-The system SHALL retain a successfully generated MP4 in browser-local storage so the user can preview or download it again without re-rendering, subject to available browser storage.
+系統 SHALL 在瀏覽器可用儲存空間允許的情況下，將成功生成的 MP4 保留於瀏覽器本機儲存空間，讓使用者無需重新渲染即可再次預覽或下載。
 
-#### Scenario: User downloads a saved output later
+#### Scenario: 使用者稍後下載已儲存的輸出
 
-- **WHEN** a saved project has a locally retained completed MP4
-- **THEN** the system allows the user to preview or download that MP4
+- **WHEN** 已儲存專案具有在本機保留的完成 MP4
+- **THEN** 系統允許使用者預覽或下載該 MP4
 
-#### Scenario: Local output is unavailable
+#### Scenario: 本機輸出無法使用
 
-- **WHEN** the generated MP4 has been removed by the user, browser eviction, or unavailable storage
-- **THEN** the system shows the project metadata and indicates that the output must be rendered again
+- **WHEN** 生成的 MP4 已由使用者刪除、遭瀏覽器清除，或儲存空間無法使用
+- **THEN** 系統顯示專案中繼資料，並指出必須重新渲染輸出
 
-### Requirement: Never persist source audio
+### Requirement: 絕不持久化來源音訊
 
-The system SHALL process the selected source audio only for the active render session and SHALL NOT persist it in project storage or upload it to the FastAPI service in the MVP.
+系統 SHALL 只在進行中的渲染工作階段處理所選來源音訊，且 MVP SHALL NOT 將其持久化至專案儲存空間或上傳至 FastAPI 服務。
 
-#### Scenario: Render session ends
+#### Scenario: 渲染工作階段結束
 
-- **WHEN** a render completes, fails, or is cancelled
-- **THEN** the system releases the source audio and does not include it in the saved project record
+- **WHEN** 渲染完成、失敗或取消
+- **THEN** 系統釋放來源音訊，且不將其納入已儲存的專案紀錄
 
-#### Scenario: Project is reopened without its source audio
+#### Scenario: 重新開啟沒有來源音訊的專案
 
-- **WHEN** the user opens a saved project and requests a new render
-- **THEN** the system asks for a new source audio selection before allowing the render to start
+- **WHEN** 使用者開啟已儲存專案並要求重新渲染
+- **THEN** 系統要求重新選擇來源音訊，之後才允許開始渲染
 
-### Requirement: Provide local data controls
+### Requirement: 提供本機資料控制
 
-The system SHALL allow the user to delete a project, delete its generated MP4 while retaining its configuration, and inspect an approximate local storage usage or quota error when a save cannot be completed.
+系統 SHALL 允許使用者刪除專案、在保留設定的同時刪除其生成 MP4，並能在無法完成儲存時查看約略的本機儲存用量或配額錯誤。
 
-#### Scenario: User deletes a project
+#### Scenario: 使用者刪除專案
 
-- **WHEN** the user confirms deletion of a project
-- **THEN** the system removes its metadata and locally retained MP4 and excludes it from the project list
+- **WHEN** 使用者確認刪除專案
+- **THEN** 系統移除該專案的中繼資料與本機保留的 MP4，並從專案清單排除
 
-#### Scenario: User deletes only the generated output
+#### Scenario: 使用者只刪除生成輸出
 
-- **WHEN** the user deletes a project's generated MP4
-- **THEN** the system retains the project configuration and marks the output unavailable for download
+- **WHEN** 使用者刪除專案的生成 MP4
+- **THEN** 系統保留專案設定，並將輸出標記為無法下載
 
-#### Scenario: Browser storage quota is exceeded
+#### Scenario: 超出瀏覽器儲存配額
 
-- **WHEN** saving metadata or an MP4 exceeds the browser's available local storage
-- **THEN** the system keeps the unsaved state visible, explains the quota problem, and suggests deleting stored outputs before retrying
+- **WHEN** 儲存中繼資料或 MP4 超出瀏覽器可用的本機儲存空間
+- **THEN** 系統保留可見的未儲存狀態、說明配額問題，並建議刪除已儲存輸出後再重試

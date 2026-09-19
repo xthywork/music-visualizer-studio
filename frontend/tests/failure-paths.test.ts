@@ -17,13 +17,13 @@ import type { RenderConfig } from "../src/render/types";
 
 const renderConfig: RenderConfig = {
   schemaVersion: 1,
-  template: { id: "spectrum-cover", title: "Failure test", artist: "Test" },
+  template: { id: "quiet-editorial", title: "Failure test", artist: "Test" },
   output: { aspectRatio: "16:9", resolution: "720p", frameRate: 30 },
 };
 
 const domainConfig: RenderConfiguration = {
   schemaVersion: DOMAIN_SCHEMA_VERSION,
-  templateId: "spectrum-cover",
+  templateId: "quiet-editorial",
   text: { title: "Failure test", artist: "Test" },
   output: { aspectRatio: "16:9", width: 1280, height: 720, frameRate: 30 },
 };
@@ -124,7 +124,7 @@ describe("worker cancellation and runtime failures", () => {
         codecPath: policy.path,
       }),
       canvasFactory: () => ({ getContext: () => ({}) }) as unknown as OffscreenCanvas,
-      sceneFactory: async () => ({ id: "spectrum-cover", render: () => undefined, dispose }),
+      sceneFactory: async () => ({ id: "quiet-editorial", render: () => undefined, dispose }),
       muxerFactory: () => ({
         addVideoChunk: () => undefined,
         addAudioChunk: () => undefined,

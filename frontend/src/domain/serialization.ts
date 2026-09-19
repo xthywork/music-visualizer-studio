@@ -5,22 +5,30 @@ import {
   type RenderConfiguration,
   type RenderError,
   type RenderRecord,
+  type ServerRenderReference,
   type TemplateId,
 } from "./models";
+import { CURRENT_TEMPLATE_IDS, validateSettingsMap } from "./template-settings";
+import { validateLyrics } from "./subtitles";
 
 export class DomainSerializationError extends Error {
   override readonly name = "DomainSerializationError";
 }
 
-const templateIds: ReadonlySet<TemplateId> = new Set([
-  "spectrum-cover",
-  "vinyl-particle",
-]);
+const templateIds: ReadonlySet<TemplateId> = new Set(CURRENT_TEMPLATE_IDS);
 const aspectRatios = new Set(["16:9", "9:16", "1:1"]);
 const frameRates = new Set([24, 25, 30, 50, 60]);
 const renderStatuses = new Set([
   "queued",
   "rendering",
+  "completed",
+  "cancelled",
+  "failed",
+  "interrupted",
+]);
+const serverJobStates = new Set([
+  "queued",
+  "running",
   "completed",
   "cancelled",
   "failed",
@@ -77,7 +85,8 @@ function configuration(value: unknown): RenderConfiguration {
   // Projects saved by older builds may still refer to the removed template.
   // Migrate that legacy value on read so one stale record cannot break the
   // project list; the removed id is never accepted or written back.
-  const templateId = input.templateId === "abstract-pulse" ? "spectrum-cover" : input.templateId;
+  const templateId = input.templateId === "geometry-lyrics" ? "poetry-lyrics"
+    : ["abstract-pulse", "spectrum-cover", "vinyl-particle"].includes(String(input.templateId)) ? "quiet-editorial" : input.templateId;
   if (!templateIds.has(templateId as TemplateId)) {
     return fail("configuration.templateId is invalid");
   }
@@ -92,6 +101,8 @@ function configuration(value: unknown): RenderConfiguration {
   return {
     schemaVersion: DOMAIN_SCHEMA_VERSION,
     templateId: templateId as TemplateId,
+    ...(input.lyrics === undefined ? {} : { lyrics: validateLyrics(input.lyrics) }),
+    ...(input.templateSettings === undefined ? {} : { templateSettings: validateSettingsMap(input.templateSettings) }),
     text: {
       title: stringValue(text.title, "configuration.text.title"),
       artist: stringValue(text.artist, "configuration.text.artist"),
@@ -122,6 +133,29 @@ function renderError(value: unknown): RenderError | undefined {
   };
 }
 
+function serverReference(value: unknown): ServerRenderReference | undefined {
+  if (value === undefined) return undefined;
+  const input = object(value, "render.server");
+  if (!serverJobStates.has(input.state as string)) {
+    return fail("render.server.state is invalid");
+  }
+  if (typeof input.outputAvailable !== "boolean") {
+    return fail("render.server.outputAvailable must be a boolean");
+  }
+  if (typeof input.statusConfirmed !== "boolean") {
+    return fail("render.server.statusConfirmed must be a boolean");
+  }
+  const outputUrl = optionalString(input.outputUrl, "render.server.outputUrl");
+  return {
+    jobId: stringValue(input.jobId, "render.server.jobId"),
+    state: input.state as ServerRenderReference["state"],
+    outputAvailable: input.outputAvailable,
+    statusConfirmed: input.statusConfirmed,
+    updatedAt: stringValue(input.updatedAt, "render.server.updatedAt"),
+    ...(outputUrl === undefined ? {} : { outputUrl }),
+  };
+}
+
 function renderRecord(value: unknown): RenderRecord {
   const input = object(value, "render");
   if (input.schemaVersion !== DOMAIN_SCHEMA_VERSION) {
@@ -139,6 +173,7 @@ function renderRecord(value: unknown): RenderRecord {
     ...(input.startedAt === undefined ? {} : { startedAt: stringValue(input.startedAt, "render.startedAt") }),
     ...(input.completedAt === undefined ? {} : { completedAt: stringValue(input.completedAt, "render.completedAt") }),
     ...(renderError(input.error) ? { error: renderError(input.error) } : {}),
+    ...(serverReference(input.server) ? { server: serverReference(input.server) } : {}),
     ...(output
       ? {
           output: {

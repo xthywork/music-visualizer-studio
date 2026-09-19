@@ -1,98 +1,100 @@
-> Historical archive: this delta spec records the original MVP change,
-> including the later-removed Abstract Pulse template. The current normative
-> specification is `openspec/specs/visualizer-generation/spec.md`.
+> 歷史封存：此差異規格記錄最初的 MVP 變更，包括後來移除的
+> Abstract Pulse 模板。目前的規範性規格為
+> `openspec/specs/visualizer-generation/spec.md`。
+>
+> [English](spec.en.md)
 
-## Purpose
+## 目的
 
-Provides a focused workflow for turning a supported audio track and a visual template into a previewable, downloadable MP4 music visualizer with predictable output options.
+提供聚焦的工作流程，將支援的音軌與視覺模板轉換成可預覽、可下載，且輸出選項可預期的 MP4 音樂視覺化影片。
 
 ## ADDED Requirements
 
-### Requirement: Accept supported audio input
+### Requirement: 接受支援的音訊輸入
 
-The system SHALL allow a user to select an MP3, WAV, or M4A audio file for a visualization project, and SHALL reject unsupported formats or files longer than 10 minutes with an actionable message before rendering begins.
+系統 SHALL 允許使用者為視覺化專案選擇 MP3、WAV 或 M4A 音訊檔案，並 SHALL 在渲染開始前拒絕不支援的格式或長於 10 分鐘的檔案，同時顯示可採取行動的訊息。
 
-#### Scenario: Valid audio is selected
+#### Scenario: 選擇有效音訊
 
-- **WHEN** the user selects a supported audio file no longer than 10 minutes
-- **THEN** the system shows the file as ready and allows template configuration to continue
+- **WHEN** 使用者選擇受支援且不超過 10 分鐘的音訊檔案
+- **THEN** 系統將檔案顯示為已就緒，並允許繼續設定模板
 
-#### Scenario: Unsupported or oversized audio is selected
+#### Scenario: 選擇不支援或超出時長的音訊
 
-- **WHEN** the user selects an unsupported format or an audio file longer than 10 minutes
-- **THEN** the system rejects it, explains the constraint, and does not start rendering
+- **WHEN** 使用者選擇不支援的格式或長於 10 分鐘的音訊檔案
+- **THEN** 系統拒絕該檔案、說明限制，且不開始渲染
 
-### Requirement: Select and configure a visual template
+### Requirement: 選擇及設定視覺模板
 
-The system SHALL offer Spectrum Cover, Vinyl Particle, and Abstract Pulse as selectable templates, and SHALL allow the user to provide optional title, artist, cover, or background inputs supported by the selected template.
+系統 SHALL 提供 Spectrum Cover、Vinyl Particle 與 Abstract Pulse 作為可選模板，並 SHALL 允許使用者提供所選模板支援的選填歌名、歌手、封面或背景輸入。
 
-#### Scenario: User selects a template
+#### Scenario: 使用者選擇模板
 
-- **WHEN** the user selects one of the available templates
-- **THEN** the system displays a preview and only the configuration fields relevant to that template
+- **WHEN** 使用者選擇其中一個可用模板
+- **THEN** 系統顯示預覽，且只顯示與該模板相關的設定欄位
 
-#### Scenario: User changes template configuration
+#### Scenario: 使用者變更模板設定
 
-- **WHEN** the user changes text or image inputs
-- **THEN** the preview and the pending render configuration reflect those values without requiring a new audio upload
+- **WHEN** 使用者變更文字或圖片輸入
+- **THEN** 預覽及待渲染設定會反映這些值，且不要求重新上傳音訊
 
-### Requirement: Configure output format
+### Requirement: 設定輸出格式
 
-The system SHALL allow the user to select exactly one of the 16:9, 9:16, or 1:1 aspect ratios, a supported output resolution, and a frame rate up to 60 fps, including a 4K option when the device capability check permits it.
+系統 SHALL 允許使用者從 16:9、9:16、1:1 畫面比例中擇一，選擇受支援的輸出解析度，以及最高 60 fps 的幀率；裝置能力檢查允許時應包含 4K 選項。
 
-#### Scenario: User selects a valid output
+#### Scenario: 使用者選擇有效輸出
 
-- **WHEN** the user selects an allowed aspect ratio, resolution, and frame rate
-- **THEN** the system shows the resulting dimensions and marks the project ready to render
+- **WHEN** 使用者選擇允許的畫面比例、解析度與幀率
+- **THEN** 系統顯示輸出尺寸，並將專案標記為可開始渲染
 
-#### Scenario: Requested output exceeds device capability
+#### Scenario: 要求的輸出超出裝置能力
 
-- **WHEN** the selected resolution or frame rate is not supported by the current browser or device
-- **THEN** the system disables or rejects that combination and explains which lower options are available
+- **WHEN** 目前瀏覽器或裝置不支援所選解析度或幀率
+- **THEN** 系統停用或拒絕該組合，並說明可用的較低設定
 
-### Requirement: Report browser rendering capability
+### Requirement: 回報瀏覽器渲染能力
 
-The system SHALL check the current browser and device before rendering and SHALL identify whether the requested video and audio encoding path can produce a playable MP4.
+系統 SHALL 在渲染前檢查目前瀏覽器與裝置，並 SHALL 判定所要求的影音編碼路徑能否產生可播放的 MP4。
 
-#### Scenario: Capability check succeeds
+#### Scenario: 能力檢查成功
 
-- **WHEN** the browser supports the requested rendering and encoding combination
-- **THEN** the system allows rendering and indicates that local browser rendering will be used
+- **WHEN** 瀏覽器支援所要求的渲染與編碼組合
+- **THEN** 系統允許渲染，並指出將使用本機瀏覽器渲染
 
-#### Scenario: Capability check fails
+#### Scenario: 能力檢查失敗
 
-- **WHEN** the browser cannot support the requested combination
-- **THEN** the system prevents an invalid render, explains the limitation, and offers compatible settings or a future server-rendering option when available
+- **WHEN** 瀏覽器不支援所要求的組合
+- **THEN** 系統阻止無效渲染、說明限制，並提供相容設定；未來伺服器渲染可用時亦可提供該選項
 
-### Requirement: Render without blocking the interface
+### Requirement: 渲染時不阻塞介面
 
-The system SHALL render in a background execution context and SHALL expose queued, rendering, completed, cancelled, and failed states with progress information where measurable.
+系統 SHALL 在背景執行環境進行渲染，並 SHALL 呈現已排隊、渲染中、已完成、已取消與失敗狀態；能測量時也應提供進度資訊。
 
-#### Scenario: Render completes
+#### Scenario: 渲染完成
 
-- **WHEN** the user starts a valid render and the render finishes successfully
-- **THEN** the system marks it completed, makes a playable MP4 available for preview, and enables download
+- **WHEN** 使用者開始有效渲染，且渲染成功完成
+- **THEN** 系統將其標記為已完成、提供可播放的 MP4 預覽，並啟用下載
 
-#### Scenario: User cancels a render
+#### Scenario: 使用者取消渲染
 
-- **WHEN** the user cancels an in-progress render
-- **THEN** the system stops the render, marks it cancelled, releases temporary render resources, and preserves the project configuration
+- **WHEN** 使用者取消進行中的渲染
+- **THEN** 系統停止渲染、標記為已取消、釋放暫存渲染資源，並保留專案設定
 
-#### Scenario: Render fails
+#### Scenario: 渲染失敗
 
-- **WHEN** a decoding, encoding, muxing, memory, or device error prevents completion
-- **THEN** the system marks the render failed, presents a useful error, and does not present a partial file as a completed MP4
+- **WHEN** 解碼、編碼、封裝、記憶體或裝置錯誤導致無法完成
+- **THEN** 系統將渲染標記為失敗、顯示有用的錯誤，且不會把部分檔案當作已完成 MP4 呈現
 
-### Requirement: Produce a downloadable MP4
+### Requirement: 產生可下載的 MP4
 
-The system SHALL combine the rendered video and the source audio into a playable MP4 whose dimensions, aspect ratio, frame rate, and duration match the selected project configuration within normal encoder tolerances.
+系統 SHALL 將渲染影片與來源音訊合併成可播放的 MP4；在一般編碼器容許誤差內，其尺寸、畫面比例、幀率與時長應符合所選專案設定。
 
-#### Scenario: User downloads a completed output
+#### Scenario: 使用者下載已完成輸出
 
-- **WHEN** a completed render is available and the user selects Download
-- **THEN** the system downloads the generated MP4 without requiring the source audio to be uploaded again
+- **WHEN** 已有完成的渲染，且使用者選擇下載
+- **THEN** 系統下載生成的 MP4，不要求再次上傳來源音訊
 
-#### Scenario: Output metadata is inspected
+#### Scenario: 檢查輸出中繼資料
 
-- **WHEN** a completed MP4 is previewed or downloaded
-- **THEN** its media metadata identifies the selected dimensions, frame rate, and audio/video tracks
+- **WHEN** 預覽或下載完成的 MP4
+- **THEN** 其媒體中繼資料會指出所選尺寸、幀率及影音軌

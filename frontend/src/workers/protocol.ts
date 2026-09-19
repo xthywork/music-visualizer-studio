@@ -5,10 +5,22 @@ export type RenderWorkerRequest =
   | { type: "start"; jobId: string; snapshot: { config: RenderConfig; duration: number; audio: PcmAudioSnapshot } }
   | { type: "cancel"; jobId: string };
 
+export interface RenderPerformance {
+  canvasMs: number;
+  videoFrameMs: number;
+  videoEncodeMs: number;
+  muxMs: number;
+  workerMs: number;
+  frames: number;
+  width: number;
+  height: number;
+  codec: string;
+}
+
 export type RenderWorkerResponse =
   | { type: "start"; jobId: string }
   | { type: "progress"; jobId: string; progress: number; frame: number; totalFrames: number; elapsedMs: number; etaMs?: number }
-  | { type: "complete"; jobId: string; output: Blob; metadata: { width: number; height: number; frameRate: number; duration: number; hasAudio: boolean; hasVideo: boolean } }
+  | { type: "complete"; jobId: string; output: Blob; performance?: RenderPerformance; metadata: { width: number; height: number; frameRate: number; duration: number; hasAudio: boolean; hasVideo: boolean } }
   | { type: "cancel"; jobId: string }
   | { type: "error"; jobId: string; error: { code: string; message: string } };
 

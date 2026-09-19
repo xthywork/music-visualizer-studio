@@ -1,37 +1,39 @@
-> Historical archive: this file records the original MVP proposal and is not
-> the current product contract. Abstract Pulse was subsequently removed; see
-> `openspec/specs/` and `docs/product-requirements.md` for current behavior.
+> 歷史封存：此文件記錄最初的 MVP 提案，並非目前的產品契約。
+> Abstract Pulse 後續已移除；目前行為請參閱 `openspec/specs/`
+> 與 `docs/product-requirements.md`。
+>
+> [English](proposal.en.md)
 
-## Why
+## 為什麼要做
 
-Creating a polished music visualizer currently requires separate creative, animation, and video-export tools. This change establishes a focused internal web workflow that turns an audio track into a configurable MP4 in a few steps, while keeping source audio private and preserving a clean path to a future SaaS product.
+製作品質精良的音樂視覺化影片，通常需要分別使用創意設計、動畫與影片匯出工具。此變更建立一套聚焦的內部網頁工作流程，讓使用者只需幾個步驟就能將音軌轉成可設定的 MP4，同時保護來源音訊隱私，並保留未來發展為 SaaS 產品的清楚路徑。
 
-## What Changes
+## 變更內容
 
-- Add a web workspace for selecting an audio file, visual template, output format, and optional title, artist, cover, or background assets.
-- Add three initial visual templates: Spectrum Cover, Vinyl Particle, and Abstract Pulse.
-- Support 16:9, 9:16, and 1:1 output with selectable resolutions and frame rates up to 4K at 60 fps.
-- Add browser capability detection and browser-first rendering in a background worker, using GPU or hardware encoding when available.
-- Encode and mux a playable MP4, provide progress/error/cancellation feedback, and allow download and preview.
-- Persist project metadata and generated MP4 output in local browser storage; never persist or upload the source audio in the MVP.
-- Add a FastAPI service foundation using a `uv` virtual environment on Ubuntu Server 24.04, listening on `0.0.0.0:34388`.
-- Define a stable render configuration boundary so a future CPU/GPU server worker, authentication, and cloud storage can be added without replacing templates.
+- 新增網頁工作區，用於選擇音訊檔案、視覺模板、輸出格式，以及選填的歌名、歌手、封面或背景素材。
+- 新增三個初始視覺模板：Spectrum Cover、Vinyl Particle 與 Abstract Pulse。
+- 支援 16:9、9:16 與 1:1 輸出，可選解析度與最高 4K、60 fps 的幀率。
+- 新增瀏覽器能力偵測與背景 Worker 優先的瀏覽器端渲染；可用時採用 GPU 或硬體編碼。
+- 編碼並封裝可播放的 MP4，提供進度、錯誤與取消回饋，並允許下載及預覽。
+- 將專案中繼資料與生成的 MP4 輸出保存在瀏覽器本機儲存空間；MVP 絕不持久化或上傳來源音訊。
+- 新增以 `uv` 虛擬環境管理、執行於 Ubuntu Server 24.04 並監聽 `0.0.0.0:34388` 的 FastAPI 服務基礎。
+- 定義穩定的渲染設定邊界，使未來能加入 CPU/GPU 伺服器 Worker、驗證與雲端儲存，而不需替換模板。
 
-## Capabilities
+## 功能範圍
 
-### New Capabilities
+### 新增功能
 
-- `visualizer-generation`: Audio-to-MP4 workflow, template selection, output configuration, browser rendering, capability handling, and downloads.
-- `local-project-storage`: Local project history, generated-output retention, source-audio non-retention, quota handling, and deletion controls.
+- `visualizer-generation`：音訊轉 MP4 工作流程、模板選擇、輸出設定、瀏覽器渲染、能力處理與下載。
+- `local-project-storage`：本機專案歷史、生成輸出保留、來源音訊不保留、配額處理與刪除控制。
 
-### Modified Capabilities
+### 修改功能
 
-None. The project has no existing capability specifications.
+無。此專案當時尚無既有功能規格。
 
-## Impact
+## 影響
 
-- New frontend application and render pipeline using Web Worker, Canvas/WebGL, WebCodecs, and an MP4 muxing layer.
-- New FastAPI backend service and `uv` project configuration for serving the application and reserving future API boundaries.
-- Browser-local persistence adapter, initially backed by IndexedDB or an equivalent browser store for metadata and MP4 Blobs.
-- New test coverage for templates, output ratios, codec capability failures, storage quota failures, and render lifecycle states.
-- No server GPU is required for the MVP; server-side rendering remains a future fallback boundary.
+- 新增使用 Web Worker、Canvas/WebGL、WebCodecs 與 MP4 封裝層的前端應用程式及渲染管線。
+- 新增 FastAPI 後端服務與 `uv` 專案設定，用來提供應用程式並預留未來 API 邊界。
+- 新增瀏覽器本機持久化介面，初期以 IndexedDB 或同等瀏覽器儲存空間保存中繼資料與 MP4 Blob。
+- 新增涵蓋模板、輸出比例、編解碼能力失敗、儲存配額失敗與渲染生命週期狀態的測試。
+- MVP 不需要伺服器 GPU；伺服器端渲染仍是未來的備援邊界。

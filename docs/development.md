@@ -1,153 +1,52 @@
-# Development
+# 開發指南
 
-## Required environment
+[English](development.en.md)
 
-- Ubuntu Server 24.04 as the deployment and primary validation target
-- Python managed with `uv`
-- Git
-- Node.js and npm only when changing or testing frontend source
-- A desktop Chrome or Edge browser for the primary MVP path
+## 開發環境
 
-The server is expected to listen on `0.0.0.0:34388`.
+- Python 3.12+ 與 `uv`
+- Ubuntu Server 24.04 為主要部署目標
+- NVIDIA driver 與支援 `h264_nvenc` 的 FFmpeg/`ffprobe` 用於硬體驗收
+- Node.js 與 npm 僅供修改前端 source 的開發者使用
 
-## Backend environment
+正式渲染只在伺服器執行：FFmpeg 解碼音訊，NumPy 執行分析，Pillow 在 CPU 上逐幀繪製場景，FFmpeg 使用 NVIDIA `h264_nvenc` 編碼 H.264 `yuv420p` 影片和 AAC 音訊，輸出 MP4。SQLite 保存單機佇列，預設單一背景 worker 依序處理工作。瀏覽器只上傳素材、查詢狀態、取消工作、預覽與下載。
 
-Create and activate the virtual environment with `uv`:
-
-```bash
-uv venv
-source .venv/bin/activate
-```
-
-Backend dependencies are declared in `pyproject.toml`. Install them with:
-
-```bash
-uv sync
-```
-
-For a reproducible install in CI or on a clean host, use the lockfile:
+## Python 開發與軟體測試
 
 ```bash
 uv sync --frozen
-```
-
-Run backend checks with:
-
-```bash
 uv run pytest tests/backend
-```
-
-Start the service locally with the same defaults used by deployment:
-
-```bash
 uv run music-visualizer
 ```
 
-The health checks are available at `/health` and `/api/health`. The root route
-serves the committed `frontend/dist/index.html`, with an SPA fallback for
-client-side routes. If that distribution is missing, the root route returns a
-small `frontend: "not-built"` service-status response instead of the website.
+Worker 啟動時會執行實際短片 NVENC preflight，並在 `/health` 與 `/api/render-capabilities` 回報 readiness。 preflight 成功代表 driver、FFmpeg 與編碼 session 可用，不代表特定解析度的效能保證。
 
-Missing `/assets/*` requests return HTTP 404 instead of the SPA HTML shell.
+## NVIDIA 硬體驗收
 
-The FastAPI application binds explicitly to the configured host and port. Host
-and port are configurable through environment variables while retaining
-`0.0.0.0` and `34388` as the internal defaults.
+在目標 GPU 主機上執行 opt-in acceptance test：
 
-## Browser codec strategy
+```bash
+VISUALIZER_RUN_NVENC_TESTS=1 uv run pytest tests/backend/test_nvenc_hardware.py -v
+```
 
-The browser preflight checks the complete video/audio encode and MP4 mux path
-before a render starts. Codec selection prefers broadly playable combinations
-in this order:
+測試輸出為 720p30、1080p60 與 4K60，並檢查 H.264、`yuv420p`、尺寸、幀率及 AAC 音軌。先在目前 RTX 5070 Ti 驗收；未來換成 RTX 3060 時，執行相同命令。未設定環境變數時，這組硬體測試會略過。
 
-1. H.264 video with AAC audio
-2. H.264 video with Opus audio
-3. VP9 video with AAC audio
-4. VP9 video with Opus audio
+## 前端開發
 
-For each supported codec combination, the capability check tries the
-`prefer-hardware` WebCodecs acceleration preference first, then
-`no-preference`, and finally `prefer-software`. Rendering is enabled only when
-the requested dimensions, frame rate, encoder path, and MP4 muxing check
-succeed. This is a runtime capability decision, not a user-agent assumption.
-
-## Automated browser validation (2026-09-12)
-
-The checked-in Playwright configuration runs one Chromium project. The current
-local runner is Playwright 1.63 with Chrome for Testing 153. The E2E suite
-creates and inspects playable 30 fps 720p MP4 files for all three aspect
-ratios:
-
-| Aspect ratio | E2E output | Frame rate |
-| --- | --- | --- |
-| 16:9 | 1280 × 720 | 30 fps |
-| 9:16 | 720 × 1280 | 30 fps |
-| 1:1 | 720 × 720 | 30 fps |
-
-The suite also exercises cancellation at 9:16, 720p, and 60 fps. Unit tests
-cover the codec-policy and unsupported-capability branches, but the automated
-matrix does not currently render 1080p or 4K output and does not run Edge or a
-dedicated `--disable-gpu` project. Those remain manual compatibility checks.
-No result promises that a device can render a long video in real time or
-complete a 4K60 export reliably. RAM, local storage quota, browser memory
-limits, encoder throughput, and overall device performance can still constrain
-a render.
-
-The resolution and frame-rate selectors remain visible for every configured
-preset. Capability detection evaluates the current selection asynchronously;
-when its complete codec/mux path is unsupported, the Generate button is
-disabled and the reason is shown. The UI does not automatically switch to a
-lower preset.
-
-## Frontend production bundle
-
-`frontend/dist` is committed so runtime-only hosts do not need Node.js. After
-changing frontend source, rebuild and include the resulting distribution in
-the same change:
+一般使用者啟動提交的 production bundle 不需要 Node.js/npm。修改 `frontend/src` 時，開發者才需要安裝相依套件、執行測試與 build，並把更新後的 `frontend/dist` 一起提交：
 
 ```bash
 cd frontend
 npm ci
+npm test
 npm run build
 git status --short dist
 ```
 
-Do not commit `frontend/node_modules` or Playwright output.
+## 隱私與儲存不變條件
 
-## Development principles
-
-- Keep template definitions serializable and independent from browser UI components.
-- Keep rendering off the main UI thread.
-- Treat browser capability checks as runtime data, not user-agent guesses.
-- Never persist source audio bytes, metadata, absolute paths, or file handles.
-  Reopening a project requires selecting the source audio again.
-- Route all project persistence through a storage abstraction.
-- Keep a clear boundary between browser rendering and the future server-rendering API.
-- Test each output aspect ratio and a representative low/high resolution before adding new templates.
-
-## Image input limits
-
-Artwork accepts only PNG, JPEG, and WebP. The browser validates MIME type,
-compressed size, file signature, header dimensions, and decoded dimensions
-before adding an image to project state. Limits are derived from the largest
-entry in `OUTPUT_PRESETS`: inputs beyond twice the maximum output dimensions or
-twice the maximum output pixel count are rejected before decode; accepted
-images are normalized to the maximum output envelope when needed.
-
-Images remain schema-compatible data URLs for this release. Moving them to a
-separate Blob asset store is still the preferred long-term direction, but was
-not combined with these safeguards because it requires a versioned IndexedDB
-migration and backward-compatibility plan.
-
-## Additional validation scenarios
-
-- Chrome and Edge on a desktop with hardware acceleration enabled
-- A browser with hardware acceleration disabled
-- Unsupported WebCodecs or codec combinations
-- 16:9, 9:16, and 1:1 outputs
-- Short audio and the 10-minute input limit
-- Storage quota exhaustion and deleted site data
-- Cancellation, reload, and render failure recovery
-- Autosave/new/switch/delete races and concurrent render saves
-- IndexedDB quota failure with immediate in-memory MP4 download
-- Invalid SVG, forged headers, oversized images, and decode failures
+- 專案設定、模板外觀、解析後的字幕 cue 與 server job/output reference 留在瀏覽器本機。
+- 建立 render job 時，來源音訊、所需圖片與字幕上傳至隔離的伺服器暫存區；在完成、失敗、取消或確認中斷後清除。
+- Completed MP4 保留於伺服器，直到明確刪除；不設隱含 TTL。
+- Job 使用 UUID 衍生目錄與 SQLite 單機 queue；不要把 client filename 或絕對路徑當成 server path。
+- 此無帳號服務僅限可信任網路/VPN；跨網路存取需透過具有驗證的 reverse proxy，不可直接作為 public SaaS 暴露。

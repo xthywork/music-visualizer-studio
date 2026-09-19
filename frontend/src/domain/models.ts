@@ -11,8 +11,33 @@ export const DOMAIN_SCHEMA_VERSION = 1 as const;
 export type DomainSchemaVersion = typeof DOMAIN_SCHEMA_VERSION;
 
 export type TemplateId =
-  | "spectrum-cover"
-  | "vinyl-particle";
+  | "quiet-editorial"
+  | "paper-resonance"
+  | "panorama-lyrics"
+  | "night-orbit"
+  | "dawn-spectrum"
+  | "poetry-lyrics";
+
+export interface LyricCue { readonly start: number; readonly text: string; }
+export interface TemplateSettings {
+  theme: "light" | "dark";
+  accent: string;
+  motion: number;
+  background: number;
+  coverScale: number;
+  coverX: number;
+  coverY: number;
+  imageWidth: number;
+  imageZoom: number;
+  imageX: number;
+  imageY: number;
+  lineCount: number;
+  palette: string;
+  lyricSize: number;
+  lineGap: number;
+  fade: number;
+}
+export type TemplateSettingsMap = Partial<Record<TemplateId, TemplateSettings>>;
 
 export type AspectRatio = "16:9" | "9:16" | "1:1";
 
@@ -47,6 +72,8 @@ export interface RenderConfigurationV1 {
   readonly text: TextConfiguration;
   readonly coverImage?: ImageReference;
   readonly backgroundImage?: ImageReference;
+  readonly lyrics?: readonly LyricCue[];
+  readonly templateSettings?: TemplateSettingsMap;
   readonly output: OutputConfiguration;
 }
 
@@ -76,6 +103,24 @@ export interface OutputMetadata {
   readonly createdAt: string;
 }
 
+export type ServerJobState =
+  | "queued"
+  | "running"
+  | "completed"
+  | "cancelled"
+  | "failed"
+  | "interrupted";
+
+/** Browser-safe reference only; the server remains authoritative for availability. */
+export interface ServerRenderReference {
+  readonly jobId: string;
+  readonly state: ServerJobState;
+  readonly outputAvailable: boolean;
+  readonly statusConfirmed: boolean;
+  readonly updatedAt: string;
+  readonly outputUrl?: string;
+}
+
 export interface RenderRecordV1 {
   readonly schemaVersion: DomainSchemaVersion;
   readonly id: string;
@@ -86,6 +131,7 @@ export interface RenderRecordV1 {
   readonly completedAt?: string;
   readonly error?: RenderError;
   readonly output?: OutputMetadata;
+  readonly server?: ServerRenderReference;
 }
 
 export type RenderRecord = RenderRecordV1;

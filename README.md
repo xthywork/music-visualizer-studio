@@ -1,103 +1,62 @@
 # Music Visualizer Studio
 
-Music Visualizer Studio is a browser-first web application for turning an audio track into a downloadable MP4 music visualizer:
+[English](README.en.md)
+
+Music Visualizer Studio 將音訊與視覺模板製作成可下載的 MP4。正式影片一律由伺服器生成；瀏覽器負責編輯專案設定、上傳本次工作所需素材、查詢進度、取消工作，以及播放或下載完成影片。
 
 ```text
-Upload audio -> Choose a visual template -> Configure output -> Render -> Download MP4
+選擇音訊與模板 → 設定輸出 → 上傳並提交 → 伺服器渲染 → 預覽／下載 MP4
 ```
 
-The first release is designed for personal and internal use. The boundaries between the browser UI, render pipeline, project metadata, and storage are intentionally kept portable so the application can become a public SaaS later without replacing its visual templates.
+## 目前功能
 
-## Current scope
+- 六種視覺模板：Night Orbit、Dawn Spectrum、Paper Resonance、Quiet Editorial、Panorama Lyrics 與 Poetry Lyrics
+- 16:9、9:16、1:1 畫面比例，720p、1080p、4K 輸出，以及 30 或 60 fps
+- MP3、WAV、M4A 音訊，單首最長 10 分鐘；PNG、JPEG、WebP 圖片；歌詞模板支援 UTF-8 SRT
+- 專案設定與字幕文字保存在瀏覽器本機；來源音訊、圖片與字幕只在伺服器工作期間暫存
+- 伺服器以 Pillow 與 NumPy 在 CPU 上分析音訊並逐幀繪製場景，再由 NVIDIA NVENC 編碼 H.264 `yuv420p` 影片，搭配 AAC 音訊封裝成 MP4
+- SQLite 保存單機工作佇列與狀態，預設由一個背景 worker 依序渲染
+- 暫存來源素材會在工作完成、失敗、取消或確認中斷後清除。完成的 MP4 會留在伺服器，直到使用者明確刪除
 
-- Two visual directions:
-  - Minimal cover art with an audio spectrum
-  - Rotating record with animated particles
-- Output aspect ratios: 16:9, 9:16, and 1:1
-- Selectable output resolution, up to 4K
-- Selectable frame rate: 30 or 60 fps
-- Audio input: MP3, WAV, and M4A, initially limited to 10 minutes per track
-- PNG/JPEG/WebP cover/background images, with decode and 4K-derived size guards
-- Browser-first Canvas 2D rendering in a Web Worker, with hardware-accelerated WebCodecs encoding when available
-- MP4 output retained in browser-local IndexedDB for later preview/download when quota allows
-- Audio is used for rendering but is not retained
-- Desktop Chrome and Edge are the primary supported browsers for the MVP
+## 伺服器需求
 
-## Environment
+主要部署目標為 Ubuntu Server 24.04。主機需要 Python 3.12+、`uv`、NVIDIA driver，以及包含 `h264_nvenc` 編碼器的 FFmpeg 和 `ffprobe`。目前驗收主機使用 Ryzen 9 5900X 與 RTX 5070 Ti；日後換成 RTX 3060 時沿用相同的啟動預檢與硬體驗收命令。
 
-- Ubuntu Server 24.04
-- Python backend using a `uv`-managed virtual environment
-- FastAPI backend serving the built frontend and health endpoints
-- Service bind address: `0.0.0.0:34388`
-
-From another machine, use `http://<server-ip>:34388`. `0.0.0.0` is a server bind address, not normally the address entered in a browser.
-
-The server does not require a GPU for the MVP because rendering is performed in the user's browser. A future server-rendering fallback may use CPU workers and can later be deployed with GPU workers if scale requires it.
-
-## Run from a clean clone
-
-The production frontend is included in the repository. With Python 3.12+ and
-`uv` installed, a normal user only needs:
+以全新 clone 啟動時，production 前端已包含在 repository，執行：
 
 ```bash
-git clone <repo>
-cd <repo>
 uv run music-visualizer
 ```
 
-`uv` creates or synchronizes the Python environment from `uv.lock`
-automatically. Node.js and npm are not required to run the committed
-production application.
+一般使用者不需要 Node.js 或 npm。只有修改 `frontend/src` 的開發者才需在 `frontend/` 執行 `npm ci`、`npm run build`，並提交更新後的 `frontend/dist`。
 
-The service listens on `0.0.0.0:34388` by default. Use
-`http://127.0.0.1:34388` locally or `http://<server-ip>:34388` from a trusted
-machine. `VISUALIZER_HOST` and `VISUALIZER_PORT` can override the defaults.
+服務預設監聽 `0.0.0.0:34388`。僅供可信任網路或 VPN 使用；若需由其他網段存取，請在前方的 reverse proxy 加上驗證與 HTTPS。這個無帳號、單機服務不是可直接公開的 SaaS。
 
-## Local development
+完整安裝與網路設定請參閱[部署指南](docs/deployment.md)。
 
-Only developers changing files under `frontend/src` need the Node.js
-toolchain. Install dependencies and rebuild the committed production bundle
-with:
+## 開發與檢查
 
-```bash
-cd frontend
-npm ci
-npm run build
-cd ..
-```
-
-After changing frontend source, verify and commit the corresponding updated
-files under `frontend/dist`; a source-only frontend change would leave clean
-clones serving a stale application.
-
-Backend developers can explicitly install the complete locked development
-environment with:
-
-```bash
-uv sync --frozen
-```
-
-For frontend-only hot reload:
-
-```bash
-cd frontend
-npm run dev
-```
-
-See [docs/development.md](docs/development.md) for browser codec strategy and
-the automated browser-validation scope, and
-[docs/deployment.md](docs/deployment.md) for Ubuntu Server deployment.
-
-## Tests
-
-Backend checks:
+Python 環境及一般後端檢查：
 
 ```bash
 uv sync --frozen
 uv run pytest tests/backend
 ```
 
-Frontend unit tests, type-check, and production build:
+在具備 NVIDIA driver 與 NVENC FFmpeg 的主機上，可選擇執行硬體驗收測試。測試涵蓋 720p、1080p60 與 4K60：
+
+```bash
+VISUALIZER_RUN_NVENC_TESTS=1 uv run pytest tests/backend/test_nvenc_hardware.py -v
+```
+
+此命令先在 RTX 5070 Ti 驗收；將來更換 RTX 3060 後，使用相同命令重跑。工作者啟動時也會執行短片 `h264_nvenc` 預檢，並可從健康與能力端點確認狀態：
+
+```bash
+curl -fsS http://127.0.0.1:34388/health
+curl -fsS http://127.0.0.1:34388/api/render-capabilities
+```
+
+修改前端 source 的開發者需安裝 Node.js/npm，並重建、提交 production bundle：
 
 ```bash
 cd frontend
@@ -106,71 +65,13 @@ npm test
 npm run build
 ```
 
-Optional Playwright browser checks:
+## 文件
 
-```bash
-npx playwright install chromium
-npm run test:e2e
-```
-
-## Architecture at a glance
-
-```text
-Browser
-  |-- audio + template settings + image assets
-  v
-Web Worker -> Canvas 2D -> WebCodecs -> MP4 muxing
-  |
-  +--> IndexedDB/local browser storage: project metadata and generated MP4
-  +--> audio bytes: released after rendering and never copied into project storage
-
-FastAPI server
-  |-- serves the application and future APIs
-  +-- does not need a GPU for browser rendering
-```
-
-See [docs/architecture.md](docs/architecture.md) for the design rationale and the future server-rendering boundary.
-
-## Privacy and MVP limitations
-
-Source audio is decoded in memory for the active render only. It is never sent
-to FastAPI or written to the server filesystem. Projects do not retain the
-source filename, metadata, absolute path, or file handle. The browser releases
-decoded audio after completion, cancellation, or failure. Project metadata,
-render history, and generated MP4 Blobs remain local to the browser.
-Users can delete an output while keeping its project configuration, or delete a
-project completely. Browser eviction, cleared site data, private browsing, or
-quota limits can remove local projects and outputs, so local storage is not a
-backup.
-
-If a completed MP4 cannot be written because IndexedDB is full, the current tab
-keeps that Blob available for preview and download. It is temporary and
-is released when the user leaves or deletes the project, starts a new project,
-replaces the output, closes the tab, or reloads the page. If the newest output
-is missing but an older saved output exists, the UI labels the older version
-explicitly.
-
-Rendering is capability-gated and device-dependent. A successful preflight
-does not guarantee real-time performance for long videos or 4K60: available
-RAM, browser limits, local storage, and device performance still apply. The
-MVP has no accounts, cloud sync, public sharing, authentication, or server-side
-render fallback. H.264/AAC is preferred for broad playback compatibility, with
-additional browser codec fallbacks documented in
-[docs/development.md](docs/development.md).
-
-See [docs/storage-and-privacy.md](docs/storage-and-privacy.md) for the full
-local-data lifecycle.
-
-## Documentation
-
-- [Product requirements](docs/product-requirements.md)
-- [Architecture](docs/architecture.md)
-- [Development](docs/development.md)
-- [Deployment](docs/deployment.md)
-- [Storage and privacy](docs/storage-and-privacy.md)
-
-## Project status
-
-The browser-first MVP is functional and regression-tested. Future work may add authenticated SaaS
-accounts, cloud synchronization, sharing, and a server-side CPU/GPU rendering
-fallback without changing the browser template configuration boundary.
+- [產品需求](docs/product-requirements.md)
+- [架構](docs/architecture.md)
+- [開發指南](docs/development.md)
+- [部署指南](docs/deployment.md)
+- [儲存與隱私](docs/storage-and-privacy.md)
+- [Quiet Editorial 視覺與動態設計](docs/quiet-editorial.md)
+- [Paper Resonance 視覺與動態設計](docs/paper-resonance.md)
+- [字幕模板與編輯器控制](docs/subtitle-templates.md)

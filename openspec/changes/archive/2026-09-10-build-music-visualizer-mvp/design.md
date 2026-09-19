@@ -1,86 +1,87 @@
-> Historical archive: this file preserves the original design discussion,
-> including alternatives that were not retained. See `docs/architecture.md`
-> and `openspec/specs/` for the implemented architecture and current contract.
+> 歷史封存：此文件保留最初的設計討論，其中包含最後未採用的替代方案。
+> 已實作的架構與目前契約請參閱 `docs/architecture.md` 與 `openspec/specs/`。
+>
+> [English](design.en.md)
 
-## Context
+## 背景
 
-This is a greenfield repository with product and deployment documentation but no application code or existing capability specs. The runtime target is Ubuntu Server 24.04 with a FastAPI service managed by `uv`, bound to `0.0.0.0:34388`; the server must not require a GPU for the MVP. See `proposal.md` and the capability specs for the user-visible contract.
+這是一個全新專案；當時只有產品與部署文件，沒有應用程式碼或既有功能規格。執行環境為 Ubuntu Server 24.04，由 `uv` 管理 FastAPI 服務並綁定 `0.0.0.0:34388`；MVP 的伺服器不得依賴 GPU。使用者可見的契約請參閱 `proposal.md` 與功能規格。
 
-## Goals / Non-Goals
+## 目標／非目標
 
-**Goals:**
+**目標：**
 
-- Establish a browser-first render pipeline that can produce a valid MP4 without uploading source audio.
-- Keep the template and render configuration portable between browser rendering and a future server worker.
-- Keep project metadata and generated outputs available locally with explicit deletion and quota behavior.
-- Make browser/device capability limits visible before expensive 4K60 work starts.
-- Keep the FastAPI service small and ready to host the UI and future API boundaries.
+- 建立瀏覽器優先的渲染管線，不上傳來源音訊即可產生有效 MP4。
+- 讓模板與渲染設定能在瀏覽器渲染器及未來的伺服器 Worker 之間移植。
+- 在本機保留專案中繼資料與生成輸出，並提供明確的刪除及配額行為。
+- 在耗費大量資源的 4K60 工作開始前，明確呈現瀏覽器與裝置能力限制。
+- 維持精簡的 FastAPI 服務，以便託管 UI 並預留未來 API 邊界。
 
-**Non-Goals:**
+**非目標：**
 
-- A cloud account, team workspace, public sharing, or synchronized project database.
-- Server-side rendering in the MVP.
-- Guaranteeing 4K60 output on hardware that cannot encode it.
-- Word-level lyric timing or a general-purpose visual editor.
+- 雲端帳號、團隊工作區、公開分享或同步式專案資料庫。
+- MVP 階段的伺服器端渲染。
+- 保證不具備相應編碼能力的硬體也能輸出 4K60。
+- 逐字歌詞時間軸或通用型視覺編輯器。
 
-## Decisions
+## 設計決策
 
-### Browser application structure
+### 瀏覽器應用程式結構
 
-Use a TypeScript browser application (React with Vite is the recommended shell) with a domain model separated from UI components. Templates implement a common scene interface and consume a versioned, serializable render configuration. This keeps a template independent from React and makes it possible to run the same scene model in a future worker service.
+使用 TypeScript 瀏覽器應用程式（建議以 React 與 Vite 作為外殼），並將領域模型與 UI 元件分離。模板實作共同的場景介面，讀取具版本、可序列化的渲染設定。如此可使模板不依賴 React，並讓相同場景模型未來能在 Worker 服務中執行。
 
-Alternative considered: place template logic directly in page components. This is simpler initially but makes preview, export, testing, and future server rendering diverge, so it is rejected.
+曾考慮直接把模板邏輯放進頁面元件。這種方式初期較簡單，但會使預覽、匯出、測試與未來的伺服器渲染逐漸分歧，因此不採用。
 
-### Render pipeline and thread boundary
+### 渲染管線與執行緒邊界
 
-Use a dedicated Web Worker for audio analysis, frame scheduling, rendering, and encoding. Use OffscreenCanvas/WebGL2 where available for frame production, with a capability-gated fallback for preview or lower output settings. The main thread owns controls, progress display, cancellation requests, and downloads.
+使用專用 Web Worker 進行音訊分析、畫面排程、渲染與編碼。可用時以 OffscreenCanvas/WebGL2 產生畫面，並依能力限制提供預覽或較低輸出設定的備援方式。主執行緒負責控制項、進度顯示、取消要求與下載。
 
-The worker communicates through a small message protocol: `start`, `progress`, `complete`, `cancel`, and `error`. Render jobs use immutable input snapshots so edits made after starting a job cannot alter its output.
+Worker 透過精簡的 `start`、`progress`、`complete`、`cancel`、`error` 訊息協定溝通。渲染工作使用不可變的輸入快照，因此啟動後的編輯不會改變該次輸出。
 
-Alternative considered: render and encode on the main thread. It risks freezing the interface during 4K60 work and makes cancellation unreliable, so it is rejected for export.
+曾考慮在主執行緒渲染及編碼，但 4K60 工作可能凍結介面，且取消不可靠，因此匯出流程不採用。
 
-### Encoding and MP4 assembly
+### 編碼與 MP4 組裝
 
-Use WebCodecs capability checks for the requested video and audio encoders, then send encoded chunks through an MP4 muxing adapter. The adapter is responsible for producing a playable MP4 and is tested independently of template rendering. The codec policy should prefer broadly playable H.264/AAC combinations when supported and reject unsupported combinations before starting a long render.
+先以 WebCodecs 檢查所需影音編碼器能力，再將編碼後的區塊送入 MP4 封裝介面。該介面負責產生可播放的 MP4，並獨立於模板渲染進行測試。編解碼策略應優先採用廣泛可播放的 H.264/AAC 組合，且在長時間渲染開始前拒絕不支援的組合。
 
-Alternative considered: rely only on `MediaRecorder`. Browser container and codec choices vary, and it does not provide the control needed for deterministic frame output and MP4 guarantees, so it is limited to a possible fallback experiment rather than the primary export path.
+曾考慮只使用 `MediaRecorder`；但各瀏覽器的容器與編解碼選擇不同，也缺乏確定性畫面輸出及 MP4 保證所需的控制能力，因此僅保留為可能的備援實驗，而非主要匯出路徑。
 
-### Audio analysis
+### 音訊分析
 
-Decode the selected file in memory using browser media/audio primitives, derive reusable waveform, spectrum, and beat-reactive data, and pass analysis data to templates. Enforce the 10-minute limit before allocating the full render pipeline. Release decoded audio and analysis buffers when a job reaches completed, cancelled, or failed state.
+使用瀏覽器媒體／音訊原語在記憶體中解碼所選檔案，產生可重用的波形、頻譜與節拍反應資料，再交給模板使用。在配置完整渲染管線前先強制執行 10 分鐘限制。工作進入完成、取消或失敗狀態時，釋放已解碼音訊與分析緩衝區。
 
-### Local persistence
+### 本機持久化
 
-Create a storage adapter with operations for project metadata, render records, generated output, deletion, and quota estimation. Use IndexedDB as the initial browser-local database and store the generated MP4 as a Blob associated with a project. Keep audio out of the adapter's data model entirely. If large-Blob performance or quota behavior proves inadequate, the adapter can move output storage to OPFS without changing the UI contract.
+建立儲存介面，提供專案中繼資料、渲染紀錄、生成輸出、刪除與配額估算等操作。初期採用 IndexedDB 作為瀏覽器本機資料庫，將生成的 MP4 以專案關聯 Blob 儲存。音訊完全不納入此介面的資料模型。若大型 Blob 效能或配額表現不足，可將輸出移至 OPFS，而不改變 UI 契約。
 
-### Project and render state
+### 專案與渲染狀態
 
-Represent project state and render state separately. A project contains the serializable configuration and references to local assets; a render record contains status, timestamps, output metadata, and error details. On application startup, any render left in an active state is reconciled to `interrupted`/`unknown` and never exposed as a completed download.
+分開表示專案狀態與渲染狀態。專案包含可序列化設定及本機素材參照；渲染紀錄包含狀態、時間戳記、輸出中繼資料與錯誤細節。應用啟動時，任何仍處於進行中狀態的渲染都會被校正為 `interrupted`／`unknown`，且絕不會以已完成下載呈現。
 
-### FastAPI boundary
+### FastAPI 邊界
 
-The FastAPI service serves the built frontend, exposes a health endpoint, and owns configuration for host and port. The MVP does not expose an audio-upload endpoint. A future server-render API will accept a versioned render configuration and asset references, enqueue work, and return a job status; it will not require changes to template semantics.
+FastAPI 服務負責提供已建置的前端、健康檢查端點，以及主機與連接埠設定。MVP 不提供音訊上傳端點。未來的伺服器渲染 API 將接收具版本的渲染設定與素材參照、將工作排入佇列並回傳工作狀態，且不需要改變模板語意。
 
-### Capability and output selection
+### 能力與輸出選擇
 
-Define an output capability matrix keyed by aspect ratio, dimensions, frame rate, and codec configuration. Populate it at runtime from browser support checks and conservative memory/size limits, then use it to constrain the resolution selector. Presets include 16:9, 9:16, and 1:1 and can expose 4K only when the selected combination is supported.
+定義以畫面比例、尺寸、幀率與編解碼設定為索引的輸出能力矩陣。在執行階段根據瀏覽器支援檢查以及保守的記憶體／尺寸限制填入資料，再用來限制解析度選擇器。預設包含 16:9、9:16 與 1:1；只有所選組合受支援時才顯示 4K。
 
-## Risks / Trade-offs
+## 風險／取捨
 
-- **[4K60 varies widely by device]** -> Run a preflight check, show estimated workload and supported alternatives, and allow cancellation; never promise a speed or hardware encoder.
-- **[MP4 support differs by browser and codec]** -> Validate the complete encode-plus-mux path before rendering and test representative Chrome/Edge configurations.
-- **[Local browser quota may be smaller than a generated MP4]** -> Estimate usage, surface quota failures, allow output-only deletion, and keep metadata visible when an output cannot be saved.
-- **[A browser reload can interrupt a worker]** -> Persist render intent/status transitions and reconcile active jobs on startup; only completed, verified outputs are downloadable.
-- **[Audio decoding and analysis can consume substantial memory]** -> Enforce the duration and file constraints early, process analysis in bounded buffers, and release resources on every terminal state.
-- **[Browser and server renderers could drift]** -> Version the scene configuration and keep template logic behind a renderer-independent interface with conformance fixtures.
+- **[不同裝置的 4K60 能力差異極大]** → 執行預檢、顯示估計工作量與可用替代方案並允許取消；不承諾速度或硬體編碼器。
+- **[各瀏覽器及編解碼器的 MP4 支援不同]** → 渲染前驗證完整的編碼加封裝路徑，並測試代表性的 Chrome／Edge 設定。
+- **[瀏覽器本機配額可能小於生成的 MP4]** → 估算用量、呈現配額錯誤、允許只刪除輸出，且輸出無法儲存時仍保留中繼資料。
+- **[重新載入瀏覽器會中斷 Worker]** → 持久化渲染意圖與狀態轉換，啟動時校正進行中的工作；只有完成且驗證過的輸出可供下載。
+- **[音訊解碼與分析可能耗用大量記憶體]** → 提前執行時長與檔案限制、以有限緩衝區處理分析，並在每種終止狀態釋放資源。
+- **[瀏覽器與伺服器渲染器可能產生差異]** → 為場景設定建立版本，將模板邏輯置於不依賴渲染器的介面後方，並使用一致性測試資料。
 
-## Migration Plan
+## 遷移計畫
 
-This is a greenfield rollout. Deploy the FastAPI service and static frontend on the Ubuntu host, verify access through `http://<server-ip>:34388`, then enable the browser render path for the primary desktop Chrome/Edge support matrix. Use a versioned local-storage schema from the first release so future project-record changes can migrate or invalidate old records explicitly. No existing user data migration is required.
+這是全新部署。先在 Ubuntu 主機部署 FastAPI 服務與靜態前端，確認可透過 `http://<server-ip>:34388` 存取，再為主要桌面版 Chrome／Edge 支援矩陣啟用瀏覽器渲染路徑。從第一版開始使用具版本的本機儲存結構，使未來能明確遷移或作廢舊專案紀錄。不需遷移任何既有使用者資料。
 
-If the browser renderer is disabled or rolled back, the server can continue serving the UI while the generate action reports that local rendering is unavailable; no source audio is stranded on the server because the MVP never uploads it.
+若停用或回復瀏覽器渲染器，伺服器仍可繼續提供 UI，而生成操作會顯示本機渲染無法使用。由於 MVP 從不上傳來源音訊，伺服器不會留下音訊資料。
 
-## Open Questions
+## 待確認事項
 
-- The exact named resolution presets and bitrate ladder can be selected during implementation without changing the user-visible aspect-ratio, selectable-resolution, or maximum-output requirements.
-- The trigger and API shape for a future server CPU fallback can be finalized when server rendering is brought into scope.
+- 確切的解析度預設名稱與位元率階梯可在實作期間決定，不會改變使用者可見的畫面比例、可選解析度與最大輸出需求。
+- 未來伺服器 CPU 備援的觸發方式與 API 形式，可在伺服器渲染納入範圍時再定案。

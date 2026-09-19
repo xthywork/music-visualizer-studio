@@ -1,67 +1,63 @@
-# Deployment
+# 部署
 
-## Internal deployment
+[English](deployment.en.md)
 
-The initial deployment targets an Ubuntu Server 24.04 host. The application service binds to:
+## 主機需求
 
-```text
-0.0.0.0:34388
-```
+- Ubuntu Server 24.04，Python 3.12+ 與 `uv`
+- NVIDIA GPU 及已安裝、可用的 NVIDIA driver
+- 同時包含 `ffmpeg`、`ffprobe` 與 `h264_nvenc` encoder 的 FFmpeg build
+- 足夠空間保存 SQLite job database、暫存素材與使用者尚未刪除的完成 MP4
 
-Users connect through the server's reachable IP address:
+目前驗收主機為 Ryzen 9 5900X 與 RTX 5070 Ti；未來更換 RTX 3060 時需使用相同的啟動預檢和硬體驗收命令。場景分析與逐幀 Pillow/NumPy 繪製使用 CPU，NVIDIA GPU 用於 H.264 NVENC 編碼。
 
-```text
-http://<server-ip>:34388
-```
+## 安裝與啟動
 
-## Start the service
-
-On a clean Ubuntu Server 24.04 host, install `uv` and clone the repository:
+安裝 `uv`、FFmpeg/NVIDIA driver 後，確認 binary 可用並 clone repository：
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+nvidia-smi
+ffmpeg -hide_banner -encoders | rg h264_nvenc
+ffprobe -version
 git clone <repo>
 cd <repo>
 ```
 
-The repository includes the current production files under `frontend/dist`.
-Start FastAPI with the documented defaults; `uv` creates or synchronizes the
-Python environment from `uv.lock` automatically:
+Repository 已含 production frontend。一般使用者不需要 Node.js 或 npm；單一命令會同步 Python 環境、初始化 SQLite/storage、執行 NVENC readiness preflight，並啟動 API 與背景 worker：
 
 ```bash
 uv run music-visualizer
 ```
 
-Node.js and npm are not required on a host that only runs the application.
-Developers who change frontend source must run `npm ci` and `npm run build`
-from `frontend/`, then commit the updated `frontend/dist` files.
+Worker 的 preflight 會實際編碼短 H.264 `yuv420p` MP4，再由 `ffprobe` 確認輸出。若 FFmpeg、driver 或 NVENC session 不可用，HTTP service 仍可啟動，但 worker 顯示 unavailable，且不會接受無法完成的工作。
 
-The host and port can be overridden for a proxy or local deployment:
+預設服務位址為 `0.0.0.0:34388`。本機檢查健康與 render 能力：
+
+```bash
+curl -fsS http://127.0.0.1:34388/health
+curl -fsS http://127.0.0.1:34388/api/render-capabilities
+```
+
+可設定 `VISUALIZER_HOST`、`VISUALIZER_PORT` 調整 bind。若由同一台主機上的 reverse proxy 代管，可讓應用程式只綁定 loopback：
 
 ```bash
 VISUALIZER_HOST=127.0.0.1 VISUALIZER_PORT=34388 uv run music-visualizer
 ```
 
-Verify the process from the host or a trusted client:
+預設資料根目錄為 `~/.local/share/music-visualizer`，可用 `VISUALIZER_DATA_ROOT` 指定其他持久目錄。該目錄含 SQLite、暫存工作檔與完成輸出；容量限制可透過 `VISUALIZER_STORAGE_CEILING_BYTES` 與 `VISUALIZER_MINIMUM_FREE_BYTES` 調整。完成 MP4 不會自動過期，刪除輸出或工作前應先確認不再需要該檔案。
+
+前端修改者需在 `frontend/` 執行 `npm ci`、`npm run build`，並提交變更後的 `frontend/dist`。一般部署不安裝 Node.js/npm。
+
+## 硬體驗收
+
+在 NVIDIA GPU 主機上執行 opt-in 測試，驗證 720p30、1080p60 與 4K60 輸出的 H.264、`yuv420p`、解析度、幀率及 AAC 音軌：
 
 ```bash
-curl -f http://127.0.0.1:34388/health
-curl -f http://127.0.0.1:34388/
+VISUALIZER_RUN_NVENC_TESTS=1 uv run pytest tests/backend/test_nvenc_hardware.py -v
 ```
 
-The application's MVP routes are the static frontend and health endpoints;
-FastAPI also exposes its API schema/docs under `/api/openapi.json`, `/api/docs`,
-and `/api/redoc`. There is no audio-upload endpoint, and source audio is never
-written to the server filesystem.
+此為 5070 Ti 的目前驗收流程；日後改用 RTX 3060 時執行相同命令。一般軟體測試不需要 NVIDIA 硬體。
 
-The server does not need a GPU for browser-first rendering. CPU capacity is still relevant for serving the application and any future fallback jobs.
+## 網路安全範圍
 
-## Network and exposure
-
-For internal use, restrict port `34388` to the trusted network or VPN. Do not treat binding to `0.0.0.0` as an authentication or security control.
-
-For public SaaS deployment, place a reverse proxy such as Nginx or Caddy in front of FastAPI, terminate HTTPS there, and keep the application process on an internal interface. Add authentication, rate limits, storage quotas, and observability before public exposure.
-
-## Future render workers
-
-The future fallback can run as a separate CPU worker. It should consume the same versioned template configuration as the browser renderer and report queued, running, completed, cancelled, and failed states. A GPU worker can be introduced later without changing the API contract.
+服務沒有帳號、登入或租戶隔離，僅適用 trusted network 或 VPN。防火牆只開放給受信任用戶；若透過其他網段提供服務，必須在 reverse proxy 實作 HTTPS 與 authentication，並將應用程式維持在內部介面。不要直接把服務公開到 Internet。公開 SaaS 的身份驗證、濫用防護、隔離、計費與營運需求不在此部署範圍。

@@ -120,7 +120,9 @@ export class IndexedDbProjectStorage implements ProjectStorage {
     const projects = await this.listProjects();
     const changed: ProjectRecord[] = [];
     for (const project of projects) {
-      const active = project.renders.filter((render) => isActiveRender(render.status));
+      const active = project.renders.filter(
+        (render) => isActiveRender(render.status) && render.server === undefined,
+      );
       if (active.length === 0) continue;
       const renders = project.renders.map((render) => active.some((candidate) => candidate.id === render.id)
         ? {

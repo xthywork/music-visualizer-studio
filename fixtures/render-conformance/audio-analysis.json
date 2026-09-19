@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "duration": 2.0,
+  "sampleRate": 48000,
+  "temporalRate": 10,
+  "queries": [
+    { "time": -1.0, "expectedFrame": 0 },
+    { "time": 0.0, "expectedFrame": 0 },
+    { "time": 0.19, "expectedFrame": 1 },
+    { "time": 1.25, "expectedFrame": 12 },
+    { "time": 9.0, "expectedFrame": 19 }
+  ]
+}

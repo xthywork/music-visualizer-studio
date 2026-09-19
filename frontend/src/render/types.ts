@@ -1,4 +1,4 @@
-import type { AspectRatio, OutputConfiguration, TemplateId } from "../domain/models";
+import type { AspectRatio, OutputConfiguration, TemplateId, LyricCue, TemplateSettings } from "../domain/models";
 
 /** Serializable boundary shared by preview, worker, and a future server renderer. */
 export type { AspectRatio, TemplateId } from "../domain/models";
@@ -19,6 +19,8 @@ export interface TemplateConfig {
   coverImage?: string;
   backgroundImage?: string;
   accentColor?: string;
+  lyrics?: readonly LyricCue[];
+  settings?: TemplateSettings;
 }
 
 export interface RenderConfig {
@@ -62,6 +64,8 @@ export interface AudioAnalysis {
 
 export interface SceneFrameContext {
   time: number;
+  /** Optional looping demonstration clock; exports use the actual frame time. */
+  analysisTime?: number;
   frame: number;
   progress: number;
   width: number;

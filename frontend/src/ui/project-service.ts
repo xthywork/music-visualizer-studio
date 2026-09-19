@@ -6,6 +6,7 @@ import {
   type RenderConfiguration,
   type RenderError,
   type RenderRecord,
+  type ServerRenderReference,
 } from "../domain";
 import {
   outputId,
@@ -141,6 +142,41 @@ export class ProjectService {
     const render = await this.updateRenderStatus(projectId, renderId, "cancelled");
     await this.storage.deleteOutput(projectId, renderId);
     return render;
+  }
+
+  /** Persist the latest server-authoritative state without storing an MP4 Blob. */
+  async updateServerRender(
+    projectId: string,
+    renderId: string,
+    server: ServerRenderReference,
+    error?: RenderError,
+  ): Promise<RenderRecord> {
+    const status = server.state === "running" ? "rendering" : server.state;
+    const render = await this.requireRender(projectId, renderId);
+    const updated: RenderRecord = {
+      ...render,
+      status,
+      updatedAt: this.now(),
+      server,
+      output: undefined,
+      ...(status === "completed" ? { completedAt: render.completedAt ?? server.updatedAt } : {}),
+      ...(error === undefined ? { error: undefined } : { error }),
+    };
+    await this.replaceRender(projectId, updated);
+    return updated;
+  }
+
+  /** Mark a saved server reference stale after a status request cannot reach the server. */
+  async markServerStatusUnconfirmed(projectId: string, renderId: string): Promise<RenderRecord> {
+    const render = await this.requireRender(projectId, renderId);
+    if (!render.server) return render;
+    const updated: RenderRecord = {
+      ...render,
+      updatedAt: this.now(),
+      server: { ...render.server, statusConfirmed: false },
+    };
+    await this.replaceRender(projectId, updated);
+    return updated;
   }
 
   async listProjects(): Promise<readonly ProjectRecord[]> {

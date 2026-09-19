@@ -22,6 +22,8 @@ export function renderConfigFromDomain(config: RenderConfigurationV1): RenderCon
       artist: config.text.artist,
       coverImage: config.coverImage?.value,
       backgroundImage: config.backgroundImage?.value,
+      lyrics: config.lyrics,
+      settings: config.templateSettings?.[config.templateId],
     },
     output: {
       aspectRatio: config.output.aspectRatio,
@@ -44,6 +46,8 @@ export function renderConfigToDomain(config: RenderConfig): RenderConfigurationV
     text: { title: config.template.title ?? "", artist: config.template.artist ?? "" },
     coverImage: imageReference(config.template.coverImage),
     backgroundImage: imageReference(config.template.backgroundImage),
+    ...(config.template.lyrics ? { lyrics: config.template.lyrics } : {}),
+    ...(config.template.settings ? { templateSettings: { [config.template.id]: config.template.settings } } : {}),
     output: { aspectRatio: config.output.aspectRatio, width: widthHeight.width, height: widthHeight.height, frameRate: config.output.frameRate },
   };
 }

@@ -23,7 +23,7 @@ const project: ProjectRecord = {
   name: "Demo",
   configuration: {
     schemaVersion: DOMAIN_SCHEMA_VERSION,
-    templateId: "spectrum-cover",
+    templateId: "quiet-editorial",
     text: { title: "Song", artist: "Artist" },
     coverImage: { kind: "data-url", value: "data:image/png;base64,abc", alt: "cover" },
     output: { aspectRatio: "16:9", width: 1920, height: 1080, frameRate: 60 },
@@ -65,10 +65,41 @@ afterEach(() => {
 });
 
 describe("versioned domain serialization", () => {
+  it("keeps old project records without server fields fully compatible", () => {
+    const legacy = JSON.stringify(project);
+    expect(deserializeProject(legacy)).toEqual(project);
+    expect(serializeProject(deserializeProject(legacy))).not.toContain('"server"');
+  });
+
+  it("round-trips optional authoritative server job and output references", () => {
+    const withServer: ProjectRecord = {
+      ...project,
+      renders: [{
+        ...project.renders[0],
+        server: {
+          jobId: "e1d54cf7-40f3-457d-a359-872dcd8f063b",
+          state: "completed",
+          outputAvailable: true,
+          statusConfirmed: true,
+          updatedAt: "2026-01-01T00:01:00.000Z",
+          outputUrl: "/api/render-jobs/e1d54cf7-40f3-457d-a359-872dcd8f063b/output",
+        },
+      }],
+    };
+    expect(deserializeProject(serializeProject(withServer))).toEqual(withServer);
+  });
+
+  it.each(["quiet-editorial", "paper-resonance"] as const)("reopens %s projects with both uploaded images intact", (templateId) => {
+    const editorial: ProjectRecord = { ...project, configuration: {
+      ...project.configuration, templateId,
+      backgroundImage: { kind: "data-url", value: "data:image/png;base64,background" },
+    } };
+    expect(deserializeProject(serializeProject(editorial))).toEqual(editorial);
+  });
   it("maps a legacy Abstract Pulse project to Spectrum Cover when reading", () => {
-    const legacy = JSON.parse(serializeProject(project).replace('"spectrum-cover"', '"abstract-pulse"')) as Record<string, unknown>;
+    const legacy = JSON.parse(serializeProject(project).replace('"quiet-editorial"', '"abstract-pulse"')) as Record<string, unknown>;
     const migrated = deserializeProject(JSON.stringify(legacy));
-    expect(migrated.configuration.templateId).toBe("spectrum-cover");
+    expect(migrated.configuration.templateId).toBe("quiet-editorial");
   });
 
   it("round-trips all persisted fields and excludes accidental audio fields", () => {
@@ -119,6 +150,28 @@ describe("in-memory local project storage", () => {
     expect(saved?.renders[0].status).toBe("interrupted");
     expect(saved?.renders[0].output).toBeUndefined();
     expect(await storage.getOutput(project.id, "render-1")).toBeUndefined();
+  });
+
+  it("does not interrupt an active authoritative server job on page reload", async () => {
+    const storage = new InMemoryProjectStorage();
+    const active = {
+      ...project,
+      renders: [{
+        ...project.renders[0],
+        status: "rendering" as const,
+        output: undefined,
+        server: {
+          jobId: "job-running",
+          state: "running" as const,
+          outputAvailable: false,
+          statusConfirmed: true,
+          updatedAt: "2026-01-01T00:00:30.000Z",
+        },
+      }],
+    };
+    await storage.saveProject(active);
+    expect(await storage.reconcileActiveRenders("2026-01-02T00:00:00.000Z")).toEqual([]);
+    expect((await storage.getProject(project.id))?.renders[0]).toEqual(active.renders[0]);
   });
 
   it("raises a typed quota error while preserving saved metadata", async () => {

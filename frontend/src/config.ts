@@ -42,17 +42,31 @@ export const OUTPUT_PRESETS: Record<AspectRatio, OutputPreset[]> = {
 export const FRAME_RATES = [30, 60] as const;
 
 export const TEMPLATES: Array<{ id: TemplateId; name: string; description: string; accent: string }> = [
+  { id: "night-orbit", name: "夜航聲環", description: "深海唱片、環狀聲紋與寧靜光影", accent: "#8bbab8" },
+  { id: "dawn-spectrum", name: "晨光頻譜", description: "晨光影像、留白構圖與水平聲浪", accent: "#b77956" },
   {
-    id: "spectrum-cover",
-    name: "Spectrum Cover",
-    description: "極簡封面與細緻音訊頻譜",
-    accent: "#64f0d0",
+    id: "paper-resonance",
+    name: "紙上聲景",
+    description: "暖白紙感、影像拼貼與朱紅流動墨線",
+    accent: "#cf7961",
   },
   {
-    id: "vinyl-particle",
-    name: "Vinyl Particle",
-    description: "旋轉唱片與節拍粒子",
-    accent: "#ff7a9c",
+    id: "quiet-editorial",
+    name: "靜謐唱片誌",
+    description: "沉靜影像、唱片內頁排版與細膩律動",
+    accent: "#c9b99c",
+  },
+  {
+    id: "panorama-lyrics",
+    name: "全景映像",
+    description: "全幅影像與居中滾動歌詞 · SRT",
+    accent: "#a3bdc9",
+  },
+  {
+    id: "poetry-lyrics",
+    name: "留白詩頁",
+    description: "書頁留白、側邊影像與詩句歌詞 · SRT",
+    accent: "#8b735b",
   },
 ];
 

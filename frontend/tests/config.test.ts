@@ -21,10 +21,14 @@ describe("audio validation", () => {
 });
 
 describe("configuration catalog", () => {
-  it("contains the two supported templates", () => {
+  it("contains the supported templates", () => {
     expect(TEMPLATES.map((item) => item.id)).toEqual([
-      "spectrum-cover",
-      "vinyl-particle",
+      "night-orbit",
+      "dawn-spectrum",
+      "paper-resonance",
+      "quiet-editorial",
+      "panorama-lyrics",
+      "poetry-lyrics",
     ]);
   });
 
