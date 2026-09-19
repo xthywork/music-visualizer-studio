@@ -51,6 +51,6 @@
 
 - [x] 7.1 Add backend regression coverage for upload limits, validation, queue ordering, restart recovery, disk-full handling, traversal, cleanup idempotency and output ranges; verify the complete backend suite passes without NVIDIA hardware using injected adapters.
 - [x] 7.2 Update Playwright flows for upload, queued/running progress, reload, cancel, completed preview/download, unavailable output and deletion; verify E2E runs against deterministic fake worker mode.
-- [ ] 7.3 Rebuild and commit `frontend/dist`, then verify a clean clone starts the full API/frontend/worker supervisor with `uv run music-visualizer` and requires no Node.js, npm, Redis or external database.
+- [x] 7.3 Rebuild and commit `frontend/dist`, then verify a clean clone starts the full API/frontend/worker supervisor with `uv run music-visualizer` and requires no Node.js, npm, Redis or external database.
 - [x] 7.4 Update README, architecture, deployment, development, storage/privacy and OpenSpec-facing documentation in Chinese primary plus English companion form; verify docs consistently describe temporary server uploads, CPU scene rendering, NVENC, prerequisites and trusted-network restriction.
 - [x] 7.5 Run frontend unit tests, production build, Playwright E2E, backend tests, OpenSpec strict validation and `git diff --check`; verify every command passes and record hardware-only tests separately.
