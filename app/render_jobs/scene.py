@@ -198,6 +198,15 @@ def paste_image(
     canvas.alpha_composite(resized, (placement.destination[0], placement.destination[1]))
 
 
+def composite_color_overlay(canvas: Image.Image, color: str, *, opacity: float) -> None:
+    """Blend a solid color over an RGBA canvas without discarding its pixels."""
+
+    if opacity <= 0:
+        return
+    overlay = Image.new("RGBA", canvas.size, rgba(color, opacity))
+    canvas.alpha_composite(overlay)
+
+
 def rgba(color: str, alpha: float = 1) -> tuple[int, int, int, int]:
     red, green, blue = ImageColor.getrgb(color)
     return red, green, blue, round(255 * min(1, max(0, alpha)))

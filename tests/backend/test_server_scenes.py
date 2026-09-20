@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from PIL import Image
 
 from app.render_jobs.audio import AudioAnalysis
 from app.render_jobs.models import RenderConfiguration
@@ -161,6 +162,26 @@ def test_instrumental_and_editorial_scenes_react_to_audio() -> None:
         quiet = scene.render(SceneFrame(time=1, frame=30, total_frames=120, width=320, height=180, analysis=analysis(0.05)))
         loud = scene.render(SceneFrame(time=1, frame=30, total_frames=120, width=320, height=180, analysis=analysis(1.0)))
         assert hashlib.sha256(quiet.tobytes()).digest() != hashlib.sha256(loud.tobytes()).digest()
+
+
+def test_quiet_editorial_server_background_remains_visible_under_scrim() -> None:
+    config = configuration("quiet-editorial", "16:9")
+    frame = SceneFrame(
+        time=1,
+        frame=30,
+        total_frames=120,
+        width=320,
+        height=180,
+        analysis=analysis(),
+    )
+    without_background = create_scene(config, SceneAssets(), font_book()).render(frame)
+    with_background = create_scene(
+        config,
+        SceneAssets(background=Image.new("RGBA", (32, 32), "#ff0000")),
+        font_book(),
+    ).render(frame)
+
+    assert with_background.tobytes() != without_background.tobytes()
 
 
 def test_quiet_editorial_static_cache_does_not_capture_dynamic_frame_content() -> None:

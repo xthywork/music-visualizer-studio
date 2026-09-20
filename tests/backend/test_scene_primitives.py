@@ -7,6 +7,7 @@ from app.render_jobs.models import RenderConfiguration
 from app.render_jobs.scene import (
     FontBook,
     calculate_placement,
+    composite_color_overlay,
     paste_image,
     settings_for,
 )
@@ -42,6 +43,17 @@ def test_paste_image_respects_destination_bounds() -> None:
     paste_image(canvas, source, (25, 25, 50, 50), contain=False)
     assert canvas.getpixel((50, 50))[:3] == (255, 0, 0)
     assert canvas.getpixel((10, 10))[:3] == (0, 0, 0)
+
+
+def test_composite_color_overlay_blends_instead_of_replacing_background() -> None:
+    canvas = Image.new("RGBA", (1, 1), "#ff0000")
+    composite_color_overlay(canvas, "#0000ff", opacity=0.5)
+
+    red, green, blue, alpha = canvas.getpixel((0, 0))
+    assert 120 <= red <= 135
+    assert green == 0
+    assert 120 <= blue <= 135
+    assert alpha == 255
 
 
 def test_explicit_font_loads_and_is_cached() -> None:

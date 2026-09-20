@@ -16,6 +16,7 @@ from .scene import (
     SceneFrame,
     ServerScene,
     clock,
+    composite_color_overlay,
     draw_progress,
     fit_text,
     line_colors,
@@ -143,8 +144,8 @@ class InstrumentalScene(_BaseScene):
                 pan_y=self.settings.image_y,
                 opacity=self.settings.background * 0.5,
             )
+        composite_color_overlay(canvas, ground, opacity=0.76)
         draw = ImageDraw.Draw(canvas, "RGBA")
-        draw.rectangle((0, 0, width, height), fill=rgba(ground, 0.76))
         center_x = width * (0.31 if landscape else 0.5)
         center_y = height * (0.48 if landscape else 0.35)
         radius = short * 0.25
@@ -258,8 +259,12 @@ class QuietEditorialScene(_BaseScene):
         if static_canvas is None:
             canvas = Image.new("RGBA", (width, height), ground)
             paste_image(canvas, self.assets.background, (0, 0, width, height), zoom=max(1.05, self.settings.image_zoom), pan_x=self.settings.image_x, pan_y=self.settings.image_y, opacity=self.settings.background)
+            composite_color_overlay(
+                canvas,
+                "#0e1312" if dark else "#f9f6ec",
+                opacity=0.48 if dark else 0.68,
+            )
             draw = ImageDraw.Draw(canvas, "RGBA")
-            draw.rectangle((0, 0, width, height), fill=rgba("#0e1312" if dark else "#f9f6ec", 0.48 if dark else 0.68))
             draw.text((margin, height * 0.075), "NOW PLAYING", font=self.fonts.get(short * 0.014), fill=rgba(ink), anchor="lm")
             draw.line((margin, height * 0.11, width - margin, height * 0.11), fill=rgba(ink, 0.25), width=max(1, round(short / 800)))
             draw.rectangle((x - mount, y - mount, x + size + mount, y + size + mount), fill=rgba("#ccc3b2"), outline=rgba("#000000", 0.25), width=mount)
@@ -393,8 +398,12 @@ class LyricScene(_BaseScene):
         ink = "#f4f0e9" if dark else "#222630"
         canvas = Image.new("RGBA", (width, height), "#151b29" if dark else "#e8e7e2")
         paste_image(canvas, self.assets.background, (0, 0, width, height), zoom=self.settings.image_zoom, pan_x=self.settings.image_x, pan_y=self.settings.image_y, opacity=self.settings.background)
+        composite_color_overlay(
+            canvas,
+            "#071017" if dark else "#faf6ea",
+            opacity=0.62 if dark else 0.75,
+        )
         draw = ImageDraw.Draw(canvas, "RGBA")
-        draw.rectangle((0, 0, width, height), fill=rgba("#071017" if dark else "#faf6ea", 0.62 if dark else 0.75))
         cover = round(short * 0.13 * self.settings.cover_scale)
         cover_x = round(width * 0.085 + width * self.settings.cover_x / 100)
         cover_y = round(height * 0.085 + height * self.settings.cover_y / 100)
