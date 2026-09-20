@@ -51,6 +51,7 @@ def encoder_arguments(
     partial_path: Path,
     duration: float,
     encoder: str = "h264_nvenc",
+    encoder_threads: int | None = None,
 ) -> list[str]:
     if not math.isfinite(duration) or duration <= 0:
         raise ValueError("duration must be positive and finite")
@@ -58,7 +59,7 @@ def encoder_arguments(
     # NVENC and libx264 use different preset namespaces.  The software
     # integration path must not inherit the production-only NVENC `p4` value.
     preset = "p4" if encoder.endswith("_nvenc") else "veryfast"
-    return [
+    arguments = [
         "-hide_banner",
         "-loglevel",
         "error",
@@ -108,6 +109,12 @@ def encoder_arguments(
         "-y",
         str(partial_path),
     ]
+    if encoder == "libx264" and encoder_threads is not None:
+        arguments[arguments.index("-profile:v"):arguments.index("-profile:v")] = [
+            "-threads",
+            str(encoder_threads),
+        ]
+    return arguments
 
 
 class StreamingEncoder:
@@ -118,20 +125,30 @@ class StreamingEncoder:
         runner: EncoderRunner,
         *,
         encoder: str = "h264_nvenc",
+        encoder_threads: int | None = None,
         pipe_poll_seconds: float = 0.1,
     ) -> None:
         self.runner = runner
         self.encoder = encoder
+        self.encoder_threads = encoder_threads
         self.pipe_poll_seconds = pipe_poll_seconds
 
     @classmethod
-    def from_binary(cls, ffmpeg_path: str) -> "StreamingEncoder":
+    def from_binary(
+        cls,
+        ffmpeg_path: str,
+        *,
+        encoder: str = "h264_nvenc",
+        encoder_threads: int | None = None,
+    ) -> "StreamingEncoder":
         return cls(
             ProcessAdapter(
                 ffmpeg_path,
                 error_code=JobErrorCode.ENCODE_FAILED,
                 label="MP4 encoder",
-            )
+            ),
+            encoder=encoder,
+            encoder_threads=encoder_threads,
         )
 
     def encode(
@@ -157,6 +174,7 @@ class StreamingEncoder:
                 partial_path=partial_path,
                 duration=duration,
                 encoder=self.encoder,
+                encoder_threads=self.encoder_threads,
             ),
             stdin=subprocess.PIPE,
         )

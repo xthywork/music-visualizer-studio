@@ -36,12 +36,14 @@ class EncoderProbe:
         ffmpeg: CommandRunner,
         ffprobe: CommandRunner,
         encoder: str = "h264_nvenc",
+        encoder_threads: int | None = None,
         timeout_seconds: float = 15,
     ) -> None:
         self.work_root = work_root
         self.ffmpeg = ffmpeg
         self.ffprobe = ffprobe
         self.encoder = encoder
+        self.encoder_threads = encoder_threads
         self.timeout_seconds = timeout_seconds
 
     @classmethod
@@ -51,26 +53,30 @@ class EncoderProbe:
         *,
         ffmpeg_path: str,
         ffprobe_path: str,
+        encoder: str = "h264_nvenc",
+        encoder_threads: int | None = None,
     ) -> "EncoderProbe":
         return cls(
             work_root,
             ffmpeg=ProcessAdapter(
                 ffmpeg_path,
                 error_code=JobErrorCode.WORKER_UNAVAILABLE,
-                label="NVENC preflight encoder",
+                label="H.264 preflight encoder",
             ),
             ffprobe=ProcessAdapter(
                 ffprobe_path,
                 error_code=JobErrorCode.WORKER_UNAVAILABLE,
-                label="NVENC preflight verifier",
+                label="H.264 preflight verifier",
             ),
+            encoder=encoder,
+            encoder_threads=encoder_threads,
         )
 
     def check(self) -> ProbeResult:
         self.work_root.mkdir(parents=True, exist_ok=True)
         try:
             with tempfile.TemporaryDirectory(
-                prefix="nvenc-probe-", dir=self.work_root
+                prefix="encoder-probe-", dir=self.work_root
             ) as directory:
                 output = Path(directory) / "probe.mp4"
                 self.ffmpeg.run(
@@ -83,12 +89,16 @@ class EncoderProbe:
         except (OSError, ProcessAdapterError, ValueError, json.JSONDecodeError):
             return ProbeResult(
                 ready=False,
-                reason="NVIDIA H.264 encoder readiness check failed.",
+                reason=(
+                    "NVIDIA H.264 encoder readiness check failed."
+                    if self.encoder == "h264_nvenc"
+                    else f"{self.encoder} H.264 encoder readiness check failed."
+                ),
             )
         return ProbeResult(ready=True)
 
     def encode_arguments(self, output: Path) -> list[str]:
-        return [
+        arguments = [
             "-hide_banner",
             "-loglevel",
             "error",
@@ -104,7 +114,7 @@ class EncoderProbe:
             "-c:v",
             self.encoder,
             "-preset",
-            "p4",
+            "p4" if self.encoder.endswith("_nvenc") else "veryfast",
             "-profile:v",
             "high",
             "-pix_fmt",
@@ -114,6 +124,12 @@ class EncoderProbe:
             "-y",
             str(output),
         ]
+        if self.encoder == "libx264" and self.encoder_threads is not None:
+            arguments[arguments.index("-profile:v"):arguments.index("-profile:v")] = [
+                "-threads",
+                str(self.encoder_threads),
+            ]
+        return arguments
 
     @staticmethod
     def verify_arguments(output: Path) -> list[str]:

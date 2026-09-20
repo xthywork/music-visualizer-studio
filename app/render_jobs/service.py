@@ -116,7 +116,11 @@ class RenderJobService:
 
     def capabilities(self) -> RenderCapabilitiesResponse:
         status = self.readiness.get()
-        return RenderCapabilitiesResponse(ready=status.ready, reason=status.reason)
+        return RenderCapabilitiesResponse(
+            ready=status.ready,
+            reason=status.reason,
+            video_codec=self.settings.video_encoder,
+        )
 
     async def create(
         self,

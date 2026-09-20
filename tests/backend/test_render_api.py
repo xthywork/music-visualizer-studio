@@ -78,6 +78,22 @@ def test_capability_create_and_status_contract(api) -> None:
     assert status.json()["id"] == created["id"]
 
 
+def test_capability_reports_configured_software_encoder(tmp_path: Path) -> None:
+    settings = Settings(
+        frontend_dist=str(tmp_path / "frontend"),
+        data_root=tmp_path / "data",
+        worker_enabled=False,
+        video_encoder="libx264",
+    )
+    service = RenderJobService(settings, readiness=WorkerReadiness(True, None))
+
+    with TestClient(create_app(settings, service)) as client:
+        capability = client.get("/api/render-capabilities")
+
+    assert capability.status_code == 200
+    assert capability.json()["videoCodec"] == "libx264"
+
+
 def test_unavailable_worker_rejects_job_before_writing(api) -> None:
     client, service = api
     service.readiness.set(False, "NVENC preflight failed")

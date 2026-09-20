@@ -6,10 +6,10 @@
 
 - Python 3.12+ and `uv`
 - Ubuntu Server 24.04 as the primary deployment target
-- An NVIDIA driver and FFmpeg/`ffprobe` with `h264_nvenc` for hardware acceptance
+- FFmpeg/`ffprobe`; an NVIDIA driver and `h264_nvenc` for optional GPU hardware acceptance
 - Node.js and npm only for developers changing frontend source
 
-There are two production output paths. Server mode uses FFmpeg decoding and NumPy analysis, then 12 bounded processes draw Pillow frames concurrently and feed them in order to NVIDIA `h264_nvenc` with AAC. SQLite stores the single-host queue and one background job worker processes jobs in order. This Device mode reuses the scene configuration and generates in the browser with AudioContext, a module Worker, WebCodecs, and an MP4 muxer.
+There are two production output paths. Server mode uses FFmpeg decoding and NumPy analysis, then 12 bounded processes draw Pillow frames concurrently and feed them in order to the configured `h264_nvenc` or `libx264` encoder with AAC. SQLite stores the single-host queue and one background job worker processes jobs in order. This Device mode reuses the scene configuration and generates in the browser with AudioContext, a module Worker, WebCodecs, and an MP4 muxer.
 
 ## Python development and software checks
 
@@ -19,7 +19,7 @@ uv run pytest tests/backend
 uv run music-visualizer
 ```
 
-At startup, the worker runs a real short NVENC preflight and reports readiness through `/health` and `/api/render-capabilities`. A successful preflight confirms that the driver, FFmpeg, and an encode session are available; it does not guarantee performance at a particular resolution.
+At startup, the worker runs a real short preflight with the selected encoder and reports readiness through `/health` and `/api/render-capabilities`. A successful preflight confirms that FFmpeg and that encoder work; it does not guarantee performance at a particular resolution. The default is `h264_nvenc`; software mode uses `VISUALIZER_VIDEO_ENCODER=libx264`, with `VISUALIZER_ENCODER_THREADS` controlling its thread limit.
 
 ## NVIDIA hardware acceptance
 

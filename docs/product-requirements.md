@@ -26,7 +26,7 @@
 - 畫面比例：16:9、9:16、1:1
 - 最高目標：4K、60 fps
 - Resolution 選項依畫面比例限制，且需由目前選定模式的 capability check 接受。
-- Server CPU 使用 Pillow 與 NumPy 分析音訊並逐幀繪製；NVIDIA NVENC 輸出 H.264 `yuv420p`，搭配 AAC 封裝成 MP4。
+- Server CPU 使用 Pillow 與 NumPy 分析音訊並逐幀繪製；由預設 NVIDIA NVENC 或可選 CPU `libx264` 輸出 H.264 `yuv420p`，搭配 AAC 封裝成 MP4。
 - 此裝置模式使用 AudioContext、Web Worker、WebCodecs 與客戶端 MP4 muxer；是否支援 4K60 由瀏覽器與裝置能力決定。
 
 ## 模板與編輯器

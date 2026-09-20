@@ -6,10 +6,10 @@
 
 - Python 3.12+ 與 `uv`
 - Ubuntu Server 24.04 為主要部署目標
-- NVIDIA driver 與支援 `h264_nvenc` 的 FFmpeg/`ffprobe` 用於硬體驗收
+- FFmpeg/`ffprobe`；NVIDIA driver 與 `h264_nvenc` 用於可選的 GPU 硬體驗收
 - Node.js 與 npm 僅供修改前端 source 的開發者使用
 
-正式輸出有兩條 production path。伺服器模式由 FFmpeg 解碼、NumPy 分析，預設 12 個有界 process 以 Pillow 平行繪製 frame，再依序送入 NVIDIA `h264_nvenc` 和 AAC 輸出 MP4；SQLite 保存單機佇列，單一背景 job worker 依序處理工作。此裝置模式復用 scene configuration，以 AudioContext、module Worker、WebCodecs 與 MP4 muxer 在瀏覽器生成。
+正式輸出有兩條 production path。伺服器模式由 FFmpeg 解碼、NumPy 分析，預設 12 個有界 process 以 Pillow 平行繪製 frame，再依序送入設定的 `h264_nvenc` 或 `libx264` encoder，搭配 AAC 輸出 MP4；SQLite 保存單機佇列，單一背景 job worker 依序處理工作。此裝置模式復用 scene configuration，以 AudioContext、module Worker、WebCodecs 與 MP4 muxer 在瀏覽器生成。
 
 ## Python 開發與軟體測試
 
@@ -19,7 +19,7 @@ uv run pytest tests/backend
 uv run music-visualizer
 ```
 
-Worker 啟動時會執行實際短片 NVENC preflight，並在 `/health` 與 `/api/render-capabilities` 回報 readiness。 preflight 成功代表 driver、FFmpeg 與編碼 session 可用，不代表特定解析度的效能保證。
+Worker 啟動時會以所選 encoder 執行實際短片 preflight，並在 `/health` 與 `/api/render-capabilities` 回報 readiness。preflight 成功代表 FFmpeg 與該編碼器可用，不代表特定解析度的效能保證。預設為 `h264_nvenc`；軟體模式使用 `VISUALIZER_VIDEO_ENCODER=libx264`，並可由 `VISUALIZER_ENCODER_THREADS` 限制編碼執行緒。
 
 ## NVIDIA 硬體驗收
 

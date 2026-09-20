@@ -50,11 +50,15 @@ def test_encoder_command_uses_encoder_specific_preset_namespaces(tmp_path: Path)
         "duration": 1,
     }
     nvenc = encoder_arguments(output(), encoder="h264_nvenc", **common)
-    software = encoder_arguments(output(), encoder="libx264", **common)
+    software = encoder_arguments(
+        output(), encoder="libx264", encoder_threads=8, **common
+    )
 
     assert nvenc[nvenc.index("-preset") + 1] == "p4"
     assert software[software.index("-preset") + 1] == "veryfast"
+    assert software[software.index("-threads") + 1] == "8"
     assert "p4" not in software
+    assert "-threads" not in nvenc
 
 
 def test_bitrate_policy_covers_presets() -> None:

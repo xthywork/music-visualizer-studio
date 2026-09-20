@@ -164,7 +164,7 @@ class RenderJobResponse(ApiModel):
 class RenderCapabilitiesResponse(ApiModel):
     schema_version: Literal[1] = 1
     ready: bool
-    video_codec: Literal["h264_nvenc"] = "h264_nvenc"
+    video_codec: Literal["h264_nvenc", "libx264"] = "h264_nvenc"
     audio_codec: Literal["aac"] = "aac"
     container: Literal["video/mp4"] = "video/mp4"
     pixel_format: Literal["yuv420p"] = "yuv420p"

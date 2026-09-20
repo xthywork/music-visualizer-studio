@@ -19,7 +19,7 @@ The interface should keep the number of decisions small while still allowing use
 3. Add optional title, artist, cover/background image, and visual settings exposed by the template.
 4. Choose aspect ratio, resolution, and frame rate.
 5. Select Server or This Device at the bottom of the project list and check capability for that mode and output. Never fall back automatically.
-6. Render in the persistent server queue with CPU/NVENC, or in a browser Worker with WebCodecs.
+6. Render in the persistent server queue with CPU scene drawing and NVENC or `libx264` encoding, or in a browser Worker with WebCodecs.
 7. Show progress, estimated remaining time, errors, and cancellation where supported.
 8. Preview the generated video and download the MP4.
 9. Save the project record locally. Store client MP4s in IndexedDB when quota permits; retain server outputs by job reference. If client persistence fails, keep the new Blob downloadable only while the user remains in that project and tab.
@@ -29,7 +29,7 @@ The interface should keep the number of decisions small while still allowing use
 - Aspect ratios: 16:9, 9:16, 1:1
 - Maximum target: 4K at 60 fps
 - Resolution choices are constrained by the selected aspect ratio. The current selection is capability-checked for the selected render mode and generation is disabled when that path is unavailable.
-- Server mode uses CPU scene rendering and NVIDIA H.264 NVENC with AAC. This Device mode uses AudioContext, a Web Worker, WebCodecs, and an MP4 muxer; actual codec and 4K60 support depends on the browser and device.
+- Server mode uses CPU scene rendering and either NVIDIA H.264 NVENC or CPU `libx264` with AAC. This Device mode uses AudioContext, a Web Worker, WebCodecs, and an MP4 muxer; actual codec and 4K60 support depends on the browser and device.
 
 ## Templates and editor
 

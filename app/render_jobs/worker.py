@@ -223,7 +223,11 @@ class JobRenderer:
     def __init__(self, settings, storage: JobStorage) -> None:  # settings kept untyped for spawn safety
         self.settings = settings
         self.storage = storage
-        self.encoder = StreamingEncoder.from_binary(settings.ffmpeg_path)
+        self.encoder = StreamingEncoder.from_binary(
+            settings.ffmpeg_path,
+            encoder=settings.video_encoder,
+            encoder_threads=settings.encoder_threads,
+        )
 
     def __call__(
         self,
@@ -360,6 +364,8 @@ class WorkerSupervisor:
             self.settings.data_root / "probe",
             ffmpeg_path=self.settings.ffmpeg_path,
             ffprobe_path=self.settings.ffprobe_path,
+            encoder=self.settings.video_encoder,
+            encoder_threads=self.settings.encoder_threads,
         )
         if not update_worker_readiness(probe, self.readiness).ready:
             return False

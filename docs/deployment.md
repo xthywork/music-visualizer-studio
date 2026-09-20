@@ -5,15 +5,14 @@
 ## 主機需求
 
 - Ubuntu Server 24.04，Python 3.12+ 與 `uv`
-- NVIDIA GPU 及已安裝、可用的 NVIDIA driver
-- 同時包含 `ffmpeg`、`ffprobe` 與 `h264_nvenc` encoder 的 FFmpeg build
+- `ffmpeg` 與 `ffprobe`；預設 GPU 模式另需 NVIDIA GPU、driver 與 `h264_nvenc` encoder
 - 足夠空間保存 SQLite job database、暫存素材與使用者尚未刪除的完成 MP4
 
-目前驗收主機為 Ryzen 9 5900X 與 RTX 5070 Ti；未來更換 RTX 3060 時需使用相同的啟動預檢和硬體驗收命令。場景分析與逐幀 Pillow/NumPy 繪製使用 CPU，NVIDIA GPU 用於 H.264 NVENC 編碼。
+目前 GPU 驗收主機為 Ryzen 9 5900X 與 RTX 5070 Ti。場景分析與逐幀 Pillow/NumPy 繪製使用 CPU；影片可由 NVIDIA NVENC 或 CPU `libx264` 編碼。
 
 ## 安裝與啟動
 
-安裝 `uv`、FFmpeg/NVIDIA driver 後，確認 binary 可用並 clone repository：
+安裝 `uv` 與 FFmpeg 後，確認 binary 可用並 clone repository。只有 NVENC 模式需要 `nvidia-smi` 與 `h264_nvenc`：
 
 ```bash
 nvidia-smi
@@ -23,13 +22,24 @@ git clone <repo>
 cd <repo>
 ```
 
-Repository 已含 production frontend。一般使用者不需要 Node.js 或 npm；單一命令會同步 Python 環境、初始化 SQLite/storage、執行 NVENC readiness preflight，並啟動 API 與背景 worker：
+Repository 已含 production frontend。一般使用者不需要 Node.js 或 npm；單一命令會同步 Python 環境、初始化 SQLite/storage、執行所選 encoder 的 readiness preflight，並啟動 API 與背景 worker：
 
 ```bash
 uv run music-visualizer
 ```
 
-Worker 的 preflight 會實際編碼短 H.264 `yuv420p` MP4，再由 `ffprobe` 確認輸出。若 FFmpeg、driver 或 NVENC session 不可用，HTTP service 仍可啟動，但 worker 顯示 unavailable，且不會接受無法完成的工作。
+Worker 的 preflight 會實際編碼短 H.264 `yuv420p` MP4，再由 `ffprobe` 確認輸出。若所選 encoder 不可用，HTTP service 仍可啟動，但 worker 顯示 unavailable，且不會接受無法完成的工作。
+
+沒有 NVENC 的主機可選用 CPU encoder：
+
+```bash
+VISUALIZER_VIDEO_ENCODER=libx264 \
+VISUALIZER_FRAME_WORKERS=24 \
+VISUALIZER_ENCODER_THREADS=8 \
+uv run music-visualizer
+```
+
+`VISUALIZER_ENCODER_THREADS` 只套用於 `libx264`。以上 24/8 配置適合 32 個單執行緒 CPU 核心；其他主機應保留足夠核心給 encoder 與作業系統。預設仍是 `h264_nvenc`，既有 GPU 部署不需修改設定。
 
 介面預設選擇「伺服器」。使用者也可在專案列表底部改選「此裝置」，由瀏覽器以 AudioContext、Web Worker、WebCodecs 與 MP4 muxer 生成，不使用伺服器 CPU/GPU。客戶端模式需要支援 WebCodecs、module Worker 與所選 codec/解析度的現代瀏覽器；實際能力會隨輸出設定重新檢查。任一模式不可用時只會停用該模式的生成，不會自動切換。
 

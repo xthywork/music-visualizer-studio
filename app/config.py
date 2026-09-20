@@ -5,11 +5,13 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 34388
 MIB = 1024 * 1024
 GIB = 1024 * MIB
+VideoEncoder = Literal["h264_nvenc", "libx264"]
 
 
 def _env_int(name: str, default: int) -> int:
@@ -48,6 +50,13 @@ def _env_bool(name: str, default: bool) -> bool:
     return default
 
 
+def _env_video_encoder(name: str, default: VideoEncoder) -> VideoEncoder:
+    value = os.getenv(name)
+    if value in {"h264_nvenc", "libx264"}:
+        return value
+    return default
+
+
 def _default_data_root() -> Path:
     xdg_root = os.getenv("XDG_DATA_HOME")
     base = Path(xdg_root).expanduser() if xdg_root else Path.home() / ".local" / "share"
@@ -74,6 +83,8 @@ class Settings:
     worker_enabled: bool = True
     worker_poll_ms: int = 250
     frame_workers: int = 12
+    video_encoder: VideoEncoder = "h264_nvenc"
+    encoder_threads: int = 8
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -103,4 +114,8 @@ class Settings:
             worker_enabled=_env_bool("VISUALIZER_WORKER_ENABLED", True),
             worker_poll_ms=_env_positive_int("VISUALIZER_WORKER_POLL_MS", 250),
             frame_workers=_env_positive_int("VISUALIZER_FRAME_WORKERS", 12),
+            video_encoder=_env_video_encoder(
+                "VISUALIZER_VIDEO_ENCODER", "h264_nvenc"
+            ),
+            encoder_threads=_env_positive_int("VISUALIZER_ENCODER_THREADS", 8),
         )

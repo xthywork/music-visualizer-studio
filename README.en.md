@@ -14,14 +14,14 @@ Choose audio and template -> Configure output and render location -> Generate ->
 - 16:9, 9:16, and 1:1 aspect ratios; 720p, 1080p, and 4K output; 30 or 60 fps
 - MP3, WAV, and M4A audio up to 10 minutes; PNG, JPEG, and WebP images; UTF-8 SRT for lyric templates
 - Project settings and parsed subtitle text stay in browser-local storage; source audio is never written to a project record
-- The server uses Pillow and NumPy on the CPU for audio analysis and frame-by-frame scene drawing, then NVIDIA NVENC encodes H.264 `yuv420p` video with AAC audio into MP4
+- The server uses Pillow and NumPy on the CPU for audio analysis and frame-by-frame scene drawing, then NVIDIA NVENC or CPU `libx264` encodes H.264 `yuv420p` video with AAC audio into MP4
 - This Device mode uses AudioContext, a Web Worker, WebCodecs, and an MP4 muxer for browser-side analysis, drawing, and packaging. Availability is checked for the browser and selected output, with no automatic mode fallback
-- SQLite stores the single-host job queue and status. One background job worker processes jobs in order; each job uses 12 bounded frame processes and feeds their ordered output into one NVENC encoder
+- SQLite stores the single-host job queue and status. One background job worker processes jobs in order; each job uses 12 bounded frame processes and feeds their ordered output into one FFmpeg encoder
 - Server source assets are temporary and completed server MP4s remain until explicitly deleted. Client MP4s are stored in browser IndexedDB when quota permits
 
 ## Server requirements
 
-The primary deployment target is Ubuntu Server 24.04. The host needs Python 3.12+, `uv`, an NVIDIA driver, and FFmpeg with the `h264_nvenc` encoder plus `ffprobe`. The current acceptance host uses a Ryzen 9 5900X and RTX 5070 Ti. After a future move to an RTX 3060, use the same startup preflight and hardware acceptance command.
+The primary deployment target is Ubuntu Server 24.04. The host needs Python 3.12+, `uv`, FFmpeg, and `ffprobe`. The default `h264_nvenc` mode requires an NVIDIA driver and NVENC-capable GPU. A server without NVENC can render entirely on its CPU by setting `VISUALIZER_VIDEO_ENCODER=libx264`.
 
 The production frontend is included in a clean clone. Start the application with:
 

@@ -16,8 +16,7 @@ from app.render_jobs.repository import JobRepository
 from app.render_jobs.preflight import ProbeResult
 from app.render_jobs.service import RenderJobService, WorkerReadiness
 from app.render_jobs.storage import AssetKind, JobStorage
-from app.render_jobs.worker import RenderWorker
-from app.render_jobs.worker import WorkerSupervisor
+from app.render_jobs.worker import JobRenderer, RenderWorker, WorkerSupervisor
 
 
 def configuration() -> RenderConfiguration:
@@ -43,6 +42,24 @@ def services(tmp_path: Path):
     storage = JobStorage(root, storage_ceiling_bytes=10**9, minimum_free_bytes=1)
     storage.initialize()
     return repository, storage, JobLifecycle(repository, storage)
+
+
+def test_job_renderer_uses_configured_software_encoder(tmp_path: Path) -> None:
+    settings = Settings(
+        data_root=tmp_path / "data",
+        video_encoder="libx264",
+        encoder_threads=8,
+    )
+    storage = JobStorage(
+        settings.data_root,
+        storage_ceiling_bytes=10**9,
+        minimum_free_bytes=1,
+    )
+
+    renderer = JobRenderer(settings, storage)
+
+    assert renderer.encoder.encoder == "libx264"
+    assert renderer.encoder.encoder_threads == 8
 
 
 def queued_job(repository: JobRepository, storage: JobStorage) -> str:

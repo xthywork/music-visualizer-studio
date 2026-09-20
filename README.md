@@ -14,14 +14,14 @@ Music Visualizer Studio 將音訊與視覺模板製作成可下載的 MP4。使�
 - 16:9、9:16、1:1 畫面比例，720p、1080p、4K 輸出，以及 30 或 60 fps
 - MP3、WAV、M4A 音訊，單首最長 10 分鐘；PNG、JPEG、WebP 圖片；歌詞模板支援 UTF-8 SRT
 - 專案設定與字幕文字保存在瀏覽器本機；來源音訊不寫入專案紀錄
-- 伺服器以 Pillow 與 NumPy 在 CPU 上分析音訊並逐幀繪製場景，再由 NVIDIA NVENC 編碼 H.264 `yuv420p` 影片，搭配 AAC 音訊封裝成 MP4
+- 伺服器以 Pillow 與 NumPy 在 CPU 上分析音訊並逐幀繪製場景，再由 NVIDIA NVENC 或 CPU `libx264` 編碼 H.264 `yuv420p` 影片，搭配 AAC 音訊封裝成 MP4
 - 此裝置模式以 AudioContext、Web Worker、WebCodecs 與 MP4 muxer 在瀏覽器完成分析、繪製與封裝；是否可用依瀏覽器和所選輸出即時檢查，不會自動切換模式
-- SQLite 保存單機工作佇列與狀態，預設由一個背景 job worker 依序處理工作；每個工作使用 12 個有界 frame process 平行繪圖，再依序送入單一 NVENC encoder
+- SQLite 保存單機工作佇列與狀態，預設由一個背景 job worker 依序處理工作；每個工作使用 12 個有界 frame process 平行繪圖，再依序送入單一 FFmpeg encoder
 - 伺服器暫存來源素材會在工作終止後清除，完成 MP4 留存至明確刪除；客戶端 MP4 在容量允許時保存於瀏覽器 IndexedDB
 
 ## 伺服器需求
 
-主要部署目標為 Ubuntu Server 24.04。主機需要 Python 3.12+、`uv`、NVIDIA driver，以及包含 `h264_nvenc` 編碼器的 FFmpeg 和 `ffprobe`。目前驗收主機使用 Ryzen 9 5900X 與 RTX 5070 Ti；日後換成 RTX 3060 時沿用相同的啟動預檢與硬體驗收命令。
+主要部署目標為 Ubuntu Server 24.04。主機需要 Python 3.12+、`uv`、FFmpeg 與 `ffprobe`。預設使用 `h264_nvenc`，需要 NVIDIA driver 與可用的 NVENC GPU；沒有 NVENC 的伺服器可設定 `VISUALIZER_VIDEO_ENCODER=libx264`，完全使用伺服器 CPU 生成影片。
 
 以全新 clone 啟動時，production 前端已包含在 repository，執行：
 

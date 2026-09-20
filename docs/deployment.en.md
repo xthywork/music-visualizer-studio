@@ -5,15 +5,14 @@
 ## Host requirements
 
 - Ubuntu Server 24.04, Python 3.12+, and `uv`
-- An NVIDIA GPU with a working NVIDIA driver
-- An FFmpeg build that includes `ffmpeg`, `ffprobe`, and the `h264_nvenc` encoder
+- `ffmpeg` and `ffprobe`; the default GPU mode also requires an NVIDIA GPU, driver, and `h264_nvenc` encoder
 - Enough disk space for the SQLite job database, temporary assets, and completed MP4s users have not deleted
 
-The current acceptance host uses a Ryzen 9 5900X and RTX 5070 Ti. After a future move to an RTX 3060, use the same startup preflight and hardware acceptance command. Audio analysis and frame-by-frame Pillow/NumPy scene drawing run on the CPU; the NVIDIA GPU is used for H.264 NVENC encoding.
+The current GPU acceptance host uses a Ryzen 9 5900X and RTX 5070 Ti. Audio analysis and frame-by-frame Pillow/NumPy scene drawing run on the CPU. Video can be encoded by NVIDIA NVENC or CPU `libx264`.
 
 ## Install and start
 
-Install `uv`, FFmpeg, and the NVIDIA driver, verify the binaries, and clone the repository:
+Install `uv` and FFmpeg, verify the binaries, and clone the repository. Only NVENC mode requires `nvidia-smi` and `h264_nvenc`:
 
 ```bash
 nvidia-smi
@@ -23,13 +22,24 @@ git clone <repo>
 cd <repo>
 ```
 
-The repository includes the production frontend. Normal users do not need Node.js or npm. One command synchronizes the Python environment, initializes SQLite/storage, runs the NVENC readiness preflight, and starts the API with its background worker:
+The repository includes the production frontend. Normal users do not need Node.js or npm. One command synchronizes the Python environment, initializes SQLite/storage, runs a readiness preflight for the selected encoder, and starts the API with its background worker:
 
 ```bash
 uv run music-visualizer
 ```
 
-The worker preflight encodes a short H.264 `yuv420p` MP4 and verifies it with `ffprobe`. If FFmpeg, the driver, or an NVENC session is unavailable, the HTTP service can still start, but the worker reports unavailable and does not accept jobs it cannot finish.
+The worker preflight encodes a short H.264 `yuv420p` MP4 and verifies it with `ffprobe`. If the selected encoder is unavailable, the HTTP service can still start, but the worker reports unavailable and does not accept jobs it cannot finish.
+
+A host without NVENC can select the CPU encoder:
+
+```bash
+VISUALIZER_VIDEO_ENCODER=libx264 \
+VISUALIZER_FRAME_WORKERS=24 \
+VISUALIZER_ENCODER_THREADS=8 \
+uv run music-visualizer
+```
+
+`VISUALIZER_ENCODER_THREADS` applies only to `libx264`. The 24/8 allocation suits 32 single-threaded CPU cores; other hosts should reserve enough cores for the encoder and operating system. The default remains `h264_nvenc`, so existing GPU deployments need no configuration change.
 
 The UI defaults to Server. Users can select This Device at the bottom of the project list to generate with AudioContext, a Web Worker, WebCodecs, and an MP4 muxer without using server CPU/GPU. Client mode requires a modern browser with WebCodecs, module Workers, and support for the selected codec and dimensions; capability is rechecked when output settings change. An unavailable mode disables generation for that mode and never switches automatically.
 

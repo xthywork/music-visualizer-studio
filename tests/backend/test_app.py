@@ -20,6 +20,8 @@ def test_settings_use_documented_defaults(monkeypatch) -> None:
     assert settings.worker_enabled is True
     assert settings.worker_poll_ms == 250
     assert settings.frame_workers == 12
+    assert settings.video_encoder == "h264_nvenc"
+    assert settings.encoder_threads == 8
     assert settings.max_audio_bytes == 256 * 1024 * 1024
     assert settings.max_image_bytes == 3840 * 2160
 
@@ -32,6 +34,8 @@ def test_settings_can_be_overridden_by_environment(monkeypatch) -> None:
     monkeypatch.setenv("VISUALIZER_WORKER_ENABLED", "false")
     monkeypatch.setenv("VISUALIZER_WORKER_POLL_MS", "500")
     monkeypatch.setenv("VISUALIZER_FRAME_WORKERS", "6")
+    monkeypatch.setenv("VISUALIZER_VIDEO_ENCODER", "libx264")
+    monkeypatch.setenv("VISUALIZER_ENCODER_THREADS", "4")
 
     settings = Settings.from_env()
 
@@ -42,6 +46,8 @@ def test_settings_can_be_overridden_by_environment(monkeypatch) -> None:
     assert settings.worker_enabled is False
     assert settings.worker_poll_ms == 500
     assert settings.frame_workers == 6
+    assert settings.video_encoder == "libx264"
+    assert settings.encoder_threads == 4
 
 
 def test_invalid_runtime_limits_fall_back_to_safe_defaults(monkeypatch) -> None:
@@ -49,6 +55,8 @@ def test_invalid_runtime_limits_fall_back_to_safe_defaults(monkeypatch) -> None:
     monkeypatch.setenv("VISUALIZER_MAX_AUDIO_BYTES", "not-a-number")
     monkeypatch.setenv("VISUALIZER_WORKER_ENABLED", "maybe")
     monkeypatch.setenv("VISUALIZER_FRAME_WORKERS", "0")
+    monkeypatch.setenv("VISUALIZER_VIDEO_ENCODER", "unknown")
+    monkeypatch.setenv("VISUALIZER_ENCODER_THREADS", "0")
 
     settings = Settings.from_env()
 
@@ -56,6 +64,8 @@ def test_invalid_runtime_limits_fall_back_to_safe_defaults(monkeypatch) -> None:
     assert settings.max_audio_bytes == 256 * 1024 * 1024
     assert settings.worker_enabled is True
     assert settings.frame_workers == 12
+    assert settings.video_encoder == "h264_nvenc"
+    assert settings.encoder_threads == 8
 
 
 def test_health_endpoint_is_available_without_audio_api() -> None:

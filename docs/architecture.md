@@ -15,19 +15,19 @@
   |                                      v
   |                              背景 render worker
   |                              CPU：分析與場景繪製
-  |                              NVIDIA NVENC + AAC → MP4
+  |                              NVENC 或 libx264 + AAC → MP4
   |
   +-- 此裝置模式：AudioContext → Web Worker 場景繪製
                                    WebCodecs + MP4 muxer → MP4
 ```
 
-伺服器部署目標為 Ubuntu Server 24.04、Ryzen 9 5900X 與 NVIDIA GPU。單一 job worker 預設建立 12 個 frame process，以 Python、Pillow 與 NumPy 平行產生 RGB 畫面；父程序只保留最多 12 個在途 frame，依 frame number 排序後串流給單一 FFmpeg `h264_nvenc` encoder，以 H.264 `yuv420p` 與 AAC 封裝 MP4。唯讀圖片與分析資料以 Linux fork copy-on-write 共享，記憶體有界且不會隨影片總幀數累積。Quiet Editorial 會在各 process 快取固定背景、封面、文字與版面，後續 frame 只複製底圖並繪製音訊反應內容。
+伺服器部署目標為 Ubuntu Server 24.04。單一 job worker 預設建立 12 個 frame process，以 Python、Pillow 與 NumPy 平行產生 RGB 畫面；父程序只保留最多 12 個在途 frame，依 frame number 排序後串流給單一 FFmpeg encoder，以 H.264 `yuv420p` 與 AAC 封裝 MP4。預設 encoder 為 `h264_nvenc`，也可設定 `libx264` 完全以伺服器 CPU 編碼。唯讀圖片與分析資料以 Linux fork copy-on-write 共享，記憶體有界且不會隨影片總幀數累積。Quiet Editorial 會在各 process 快取固定背景、封面、文字與版面，後續 frame 只複製底圖並繪製音訊反應內容。
 
 此裝置模式復用相同的序列化 scene configuration。主執行緒以 AudioContext 解碼音訊，module Worker 執行逐幀場景與 WebCodecs 編碼，再由 MP4 muxer 產生 Blob。可用性依所選解析度與幀率檢查；4K60 是否可用取決於客戶端瀏覽器、codec 與硬體。
 
 ## 工作佇列與 process 邊界
 
-SQLite 以 WAL 保存 job configuration snapshot、狀態、進度、取消旗標與輸出 reference。HTTP handler 不執行渲染；單一背景 worker 原子取得佇列中的下一個工作，避免預設同時開啟多個 GPU encode session。`uv run music-visualizer` 啟動 API 與 worker supervisor，worker readiness 在背景執行實際短片 NVENC encode 與 ffprobe 驗證。
+SQLite 以 WAL 保存 job configuration snapshot、狀態、進度、取消旗標與輸出 reference。HTTP handler 不執行渲染；單一背景 worker 原子取得佇列中的下一個工作，避免預設同時開啟多個 encode session。`uv run music-visualizer` 啟動 API 與 worker supervisor，worker readiness 在背景以所選 encoder 執行實際短片 encode 與 ffprobe 驗證。
 
 主要工作狀態為 queued、running、completed、failed、cancelled、interrupted 與 unavailable。瀏覽器重載後以 job identity 向伺服器取得權威狀態；伺服器重啟時會回收失去 worker owner 的工作並清除暫存輸入與不完整輸出。取消會停止 worker 所屬 FFmpeg process，終止狀態不可被遲到的完成事件覆寫。
 

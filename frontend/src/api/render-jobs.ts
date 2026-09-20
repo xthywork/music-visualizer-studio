@@ -43,7 +43,7 @@ export interface RenderJob {
 export interface RenderCapabilities {
   readonly schemaVersion: 1;
   readonly ready: boolean;
-  readonly videoCodec: "h264_nvenc";
+  readonly videoCodec: "h264_nvenc" | "libx264";
   readonly audioCodec: "aac";
   readonly container: "video/mp4";
   readonly pixelFormat: "yuv420p";

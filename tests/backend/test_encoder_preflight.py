@@ -113,5 +113,20 @@ def test_software_encoder_uses_same_probe_contract(tmp_path: Path) -> None:
             label="software probe verifier",
         ),
         encoder="libx264",
+        encoder_threads=4,
     )
+    arguments = probe.encode_arguments(tmp_path / "probe.mp4")
+    assert arguments[arguments.index("-preset") + 1] == "veryfast"
+    assert arguments[arguments.index("-threads") + 1] == "4"
     assert probe.check().ready is True
+
+
+def test_software_probe_failure_names_selected_encoder(tmp_path: Path) -> None:
+    probe = EncoderProbe(
+        tmp_path,
+        ffmpeg=FakeRunner(error=OSError("encoder unavailable")),
+        ffprobe=FakeRunner(),
+        encoder="libx264",
+    )
+
+    assert probe.check().reason == "libx264 H.264 encoder readiness check failed."
