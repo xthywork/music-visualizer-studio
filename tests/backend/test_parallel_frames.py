@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+from multiprocessing.shared_memory import SharedMemory
 
 import numpy as np
 from PIL import Image
@@ -62,9 +63,9 @@ def test_parallel_frames_are_bounded_and_yielded_in_frame_order() -> None:
         NumberedScene(), analysis(), plan, workers=4, cancelled=lambda: False
     ) as frames:
         iterator = iter(frames)
-        first = next(iterator)
+        first = bytes(next(iterator))
         assert len(frames.futures) <= 4
-        payloads = [first, *iterator]
+        payloads = [first, *(bytes(payload) for payload in iterator)]
 
     assert len(payloads) == 8
     assert [payload[:3] for payload in payloads] == [
@@ -78,7 +79,7 @@ def test_parallel_frames_emit_rgba_for_direct_nvenc_input() -> None:
     with ParallelFrameSource(
         RgbaNumberedScene(), analysis(), plan, workers=2, cancelled=lambda: False
     ) as frames:
-        payloads = list(frames)
+        payloads = [bytes(payload) for payload in frames]
 
     assert all(len(payload) == plan.width * plan.height * 4 for payload in payloads)
     assert [payload[:4] for payload in payloads] == [
@@ -97,9 +98,23 @@ def test_priming_starts_children_before_later_encoder_pipe_is_opened() -> None:
         try:
             os.close(write_descriptor)
             assert os.read(read_descriptor, 1) == b""
-            assert len(list(ordered)) == plan.total_frames
+            assert len([bytes(payload) for payload in ordered]) == plan.total_frames
         finally:
             os.close(read_descriptor)
+
+
+@pytest.mark.skipif("fork" not in multiprocessing.get_all_start_methods(), reason="requires fork")
+def test_unconsumed_primed_frame_releases_and_unlinks_shared_memory() -> None:
+    plan = FramePlan(total_frames=8, width=4, height=3, frame_rate=8, mode="RGBA")
+    with ParallelFrameSource(
+        RgbaNumberedScene(), analysis(), plan, workers=2, cancelled=lambda: False
+    ) as frames:
+        frames.prime()
+        assert frames.shared_memory is not None
+        shared_memory_name = frames.shared_memory.name
+
+    with pytest.raises(FileNotFoundError):
+        SharedMemory(name=shared_memory_name)
 
 
 @pytest.mark.skipif("fork" not in multiprocessing.get_all_start_methods(), reason="requires fork")
@@ -138,7 +153,7 @@ def test_real_scene_parallel_frames_match_sequential_render_exactly() -> None:
     with ParallelFrameSource(
         parallel_scene, audio, plan, workers=4, cancelled=lambda: False
     ) as frames:
-        actual = list(frames)
+        actual = [bytes(payload) for payload in frames]
 
     assert actual == expected
 
@@ -155,7 +170,7 @@ def test_parallel_frame_error_cleans_pool_and_allows_next_render() -> None:
     with ParallelFrameSource(
         NumberedScene(), analysis(), plan, workers=2, cancelled=lambda: False
     ) as frames:
-        assert len(list(frames)) == 1
+        assert len([bytes(payload) for payload in frames]) == 1
 
 
 @pytest.mark.skipif("fork" not in multiprocessing.get_all_start_methods(), reason="requires fork")

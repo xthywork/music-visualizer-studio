@@ -55,7 +55,9 @@ def test_software_pipeline_produces_h264_aac_mp4_with_expected_metadata(tmp_path
     )
     encoder.encode(
         (
-            Image.new("RGB", (1280, 720), (20 + frame * 5, 40, 60)).tobytes()
+            memoryview(
+                Image.new("RGB", (1280, 720), (20 + frame * 5, 40, 60)).tobytes()
+            )
             for frame in range(frame_count)
         ),
         configuration,

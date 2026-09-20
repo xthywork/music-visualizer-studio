@@ -150,7 +150,7 @@ class StreamingEncoder:
 
     def encode(
         self,
-        frames: Iterable[Image.Image | bytes],
+        frames: Iterable[Image.Image | bytes | memoryview],
         output: OutputConfiguration,
         *,
         audio_path: Path,
@@ -191,9 +191,14 @@ class StreamingEncoder:
                     if cancelled():
                         raise RenderCancelled("Render cancellation was requested.")
                     channels = 4 if self.frame_mode == "RGBA" else 3
-                    if isinstance(frame, bytes):
+                    if isinstance(frame, (bytes, memoryview)):
                         payload = frame
-                        if len(payload) != output.width * output.height * channels:
+                        payload_size = (
+                            payload.nbytes
+                            if isinstance(payload, memoryview)
+                            else len(payload)
+                        )
+                        if payload_size != output.width * output.height * channels:
                             raise ValueError("scene returned a frame with the wrong byte length")
                     else:
                         if frame.mode != self.frame_mode or frame.size != (
@@ -234,32 +239,36 @@ class StreamingEncoder:
         self,
         process: ManagedProcess,
         selector: selectors.BaseSelector,
-        payload: bytes,
+        payload: bytes | memoryview,
         *,
         cancelled: Callable[[], bool],
     ) -> None:
         descriptor = process.process.stdin.fileno()  # type: ignore[union-attr]
-        pending = memoryview(payload)
-        while pending:
-            if cancelled():
-                raise RenderCancelled("Render cancellation was requested.")
-            if process.process.poll() is not None:
-                process.wait()
-                raise ProcessAdapterError(
-                    JobErrorCode.ENCODE_FAILED, "MP4 encoder closed its input pipe."
-                )
-            if not selector.select(self.pipe_poll_seconds):
-                continue
-            try:
-                count = os.write(descriptor, pending)
-            except BlockingIOError:
-                continue
-            except BrokenPipeError:
-                process.wait()
-                raise ProcessAdapterError(
-                    JobErrorCode.ENCODE_FAILED, "MP4 encoder closed its input pipe."
-                )
-            pending = pending[count:]
+        view = memoryview(payload)
+        offset = 0
+        try:
+            while offset < view.nbytes:
+                if cancelled():
+                    raise RenderCancelled("Render cancellation was requested.")
+                if process.process.poll() is not None:
+                    process.wait()
+                    raise ProcessAdapterError(
+                        JobErrorCode.ENCODE_FAILED, "MP4 encoder closed its input pipe."
+                    )
+                if not selector.select(self.pipe_poll_seconds):
+                    continue
+                try:
+                    count = os.write(descriptor, view[offset:])
+                except BlockingIOError:
+                    continue
+                except BrokenPipeError:
+                    process.wait()
+                    raise ProcessAdapterError(
+                        JobErrorCode.ENCODE_FAILED, "MP4 encoder closed its input pipe."
+                    )
+                offset += count
+        finally:
+            view.release()
 
 
 def _publish(partial_path: Path, final_path: Path) -> None:
