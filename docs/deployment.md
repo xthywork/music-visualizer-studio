@@ -42,6 +42,15 @@ uv run music-visualizer
 
 `VISUALIZER_ENCODER_THREADS` 只套用於 `libx264`。軟體 encoder 的 preset 預設為 `veryfast`，可用 `VISUALIZER_ENCODER_PRESET=superfast` 或 `ultrafast` 換取速度，但相同 bitrate 下壓縮效率及畫質會下降。以上 24/8 配置適合 32 個單執行緒 CPU 核心；其他主機應保留足夠核心給 encoder 與作業系統。預設仍是 `h264_nvenc` 與 `p4`，既有 GPU 部署不需修改設定。
 
+H200 沒有可用的 NVENC；若要評估將 frame composition 搬到 CUDA，可用不修改正式環境的臨時 CuPy runtime 執行 4K RGB composite/download probe：
+
+```bash
+uv run --with 'cupy-cuda12x[ctk]>=14,<15' \
+  python scripts/h200_cuda_probe.py --frames 120
+```
+
+此 probe 不會產生影片或改變 production renderer，只測量靜態畫布常駐 VRAM、動態 overlay 與每幀下載回 host memory 的上限。
+
 介面預設選擇「伺服器」。使用者也可在專案列表底部改選「此裝置」，由瀏覽器以 AudioContext、Web Worker、WebCodecs 與 MP4 muxer 生成，不使用伺服器 CPU/GPU。客戶端模式需要支援 WebCodecs、module Worker 與所選 codec/解析度的現代瀏覽器；實際能力會隨輸出設定重新檢查。任一模式不可用時只會停用該模式的生成，不會自動切換。
 
 預設服務位址為 `0.0.0.0:34388`。本機檢查健康與 render 能力：

@@ -42,6 +42,15 @@ uv run music-visualizer
 
 `VISUALIZER_ENCODER_THREADS` applies only to `libx264`. Its preset defaults to `veryfast`; `VISUALIZER_ENCODER_PRESET=superfast` or `ultrafast` trades compression efficiency and quality at the same bitrate for speed. The 24/8 allocation suits 32 single-threaded CPU cores; other hosts should reserve enough cores for the encoder and operating system. Existing GPU deployments retain the `h264_nvenc` and `p4` defaults.
 
+H200 has no usable NVENC. To evaluate moving frame composition to CUDA, run the 4K RGB composite/download probe with an ephemeral CuPy runtime that does not change the production environment:
+
+```bash
+uv run --with 'cupy-cuda12x[ctk]>=14,<15' \
+  python scripts/h200_cuda_probe.py --frames 120
+```
+
+The probe does not generate a video or change the production renderer. It measures the ceiling for keeping the static canvas in VRAM, drawing a dynamic overlay, and downloading each frame to host memory.
+
 The UI defaults to Server. Users can select This Device at the bottom of the project list to generate with AudioContext, a Web Worker, WebCodecs, and an MP4 muxer without using server CPU/GPU. Client mode requires a modern browser with WebCodecs, module Workers, and support for the selected codec and dimensions; capability is rechecked when output settings change. An unavailable mode disables generation for that mode and never switches automatically.
 
 The default service address is `0.0.0.0:34388`. Check health and render capability locally:
