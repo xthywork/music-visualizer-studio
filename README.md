@@ -72,6 +72,7 @@ npm run build
 - [架構](docs/architecture.md)
 - [開發指南](docs/development.md)
 - [部署指南](docs/deployment.md)
+- [H200 vGPU 部署與效能實驗紀錄](docs/h200-vgpu-deployment.md)
 - [儲存與隱私](docs/storage-and-privacy.md)
 - [Quiet Editorial 視覺與動態設計](docs/quiet-editorial.md)
 - [Paper Resonance 視覺與動態設計](docs/paper-resonance.md)

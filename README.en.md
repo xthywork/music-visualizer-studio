@@ -72,6 +72,7 @@ npm run build
 - [Architecture](docs/architecture.en.md)
 - [Development](docs/development.en.md)
 - [Deployment](docs/deployment.en.md)
+- [H200 vGPU deployment and performance record](docs/h200-vgpu-deployment.en.md)
 - [Storage and privacy](docs/storage-and-privacy.en.md)
 - [Quiet Editorial visual and motion design](docs/quiet-editorial.en.md)
 - [Paper Resonance visual and motion design](docs/paper-resonance.en.md)
