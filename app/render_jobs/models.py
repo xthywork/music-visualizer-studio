@@ -99,7 +99,9 @@ class RenderConfiguration(ApiModel):
     schema_version: Literal[1]
     template_id: TemplateId
     text: TextConfiguration
-    lyrics: Annotated[list[LyricCue], Field(max_length=5_000)] = Field(default_factory=list)
+    lyrics: Annotated[list[LyricCue], Field(max_length=5_000)] = Field(
+        default_factory=list
+    )
     template_settings: dict[TemplateId, TemplateSettings] = Field(default_factory=dict)
     output: OutputConfiguration
 
@@ -109,6 +111,35 @@ class RenderConfiguration(ApiModel):
         if lyric_template and not self.lyrics:
             raise ValueError("lyric templates require at least one subtitle cue")
         return self
+
+
+class AgentRenderRequest(ApiModel):
+    """Compact server-only request shape intended for programmatic callers."""
+
+    template: TemplateId
+    title: str = Field(min_length=1, max_length=300)
+    artist: str = Field(default="", max_length=300)
+    aspect_ratio: AspectRatio = "16:9"
+    resolution: Literal["720p", "1080p", "4k"] = "1080p"
+    frame_rate: Literal[30, 60] = 30
+    lyrics: Annotated[list[LyricCue], Field(max_length=5_000)] = Field(default_factory=list)
+    template_settings: dict[TemplateId, TemplateSettings] = Field(default_factory=dict)
+
+    def render_configuration(self) -> RenderConfiguration:
+        width, height = OUTPUT_DIMENSIONS[(self.aspect_ratio, self.resolution)]
+        return RenderConfiguration(
+            schema_version=1,
+            template_id=self.template,
+            text=TextConfiguration(title=self.title, artist=self.artist),
+            lyrics=self.lyrics,
+            template_settings=self.template_settings,
+            output=OutputConfiguration(
+                aspect_ratio=self.aspect_ratio,
+                width=width,
+                height=height,
+                frame_rate=self.frame_rate,
+            ),
+        )
 
 
 class JobState(StrEnum):
@@ -159,6 +190,18 @@ class RenderJobResponse(ApiModel):
     error: JobError | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class AgentRenderResponse(ApiModel):
+    """Job response with stable links for a non-browser agent client."""
+
+    schema_version: Literal[1] = 1
+    render_mode: Literal["server"] = "server"
+    job: RenderJobResponse
+    status_url: str
+    cancel_url: str
+    output_url: str
+    delete_url: str
 
 
 class RenderCapabilitiesResponse(ApiModel):

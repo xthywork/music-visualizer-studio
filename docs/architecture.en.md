@@ -25,6 +25,8 @@ The server target is Ubuntu Server 24.04, a Ryzen 9 5900X, and an NVIDIA GPU. On
 
 This Device mode reuses the same serialized scene configuration. The main thread decodes audio through AudioContext; a module Worker draws frames and uses WebCodecs, then an MP4 muxer produces the Blob. Capability is checked for the selected resolution and frame rate. Client-side 4K60 availability depends on the browser, codecs, and device hardware.
 
+An AI agent can create the same server jobs through `/api/agent/render`, but this API is permanently `server` mode with no client fallback or browser compute path. The agent uploads audio directly as multipart data, so the server never fetches an arbitrary remote `audioUrl`. See [AI Agent API](agent-api.en.md) for the full contract.
+
 ## Queue and process boundary
 
 SQLite with WAL stores job configuration snapshots, status, progress, cancellation flags, and output references. HTTP handlers do not render. One background worker atomically claims the next queued job, avoiding multiple simultaneous GPU encode sessions by default. `uv run music-visualizer` starts the API and worker supervisor. Worker readiness runs a real short NVENC encode followed by ffprobe verification.

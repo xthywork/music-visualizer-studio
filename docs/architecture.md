@@ -25,6 +25,8 @@
 
 此裝置模式復用相同的序列化 scene configuration。主執行緒以 AudioContext 解碼音訊，module Worker 執行逐幀場景與 WebCodecs 編碼，再由 MP4 muxer 產生 Blob。可用性依所選解析度與幀率檢查；4K60 是否可用取決於客戶端瀏覽器、codec 與硬體。
 
+AI agent 可經由 `/api/agent/render` 建立相同的伺服器工作，但此 API 固定為 `server` 模式，沒有 client fallback 或瀏覽器計算路徑。Agent 以 multipart 直接上傳音訊，避免伺服器代抓任意遠端 `audioUrl`。詳細 contract 請參閱 [AI Agent API](agent-api.md)。
+
 ## 工作佇列與 process 邊界
 
 SQLite 以 WAL 保存 job configuration snapshot、狀態、進度、取消旗標與輸出 reference。HTTP handler 不執行渲染；單一背景 worker 原子取得佇列中的下一個工作，避免預設同時開啟多個 GPU encode session。`uv run music-visualizer` 啟動 API 與 worker supervisor，worker readiness 在背景執行實際短片 NVENC encode 與 ffprobe 驗證。

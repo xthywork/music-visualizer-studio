@@ -10,10 +10,17 @@ from typing import AsyncIterator
 import uvicorn
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import ValidationError
 from starlette.responses import Response
 
 from . import __version__
 from .config import Settings
+from .render_jobs.models import (
+    AgentRenderRequest,
+    AgentRenderResponse,
+    JobErrorCode,
+    RenderJobResponse,
+)
 from .render_jobs.service import RenderJobService, RenderServiceError
 from .render_jobs.worker import WorkerSupervisor
 
@@ -27,6 +34,19 @@ def _frontend_directory(settings: Settings) -> Path:
 
     configured = settings.frontend_dist
     return Path(configured).expanduser().resolve() if configured else DEFAULT_FRONTEND_DIST
+
+
+def _agent_response(job: RenderJobResponse) -> AgentRenderResponse:
+    """Expose server-render job links without requiring UI-specific state."""
+
+    resource = f"/api/agent/render/{job.id}"
+    return AgentRenderResponse(
+        job=job,
+        status_url=resource,
+        cancel_url=f"{resource}/cancel",
+        output_url=f"/api/render-jobs/{job.id}/output",
+        delete_url=resource,
+    )
 
 
 def create_app(
@@ -104,6 +124,49 @@ def create_app(
             background=background,
             subtitles=subtitles,
         )
+
+    @application.post("/api/agent/render", status_code=201)
+    async def create_agent_render(
+        request: str = Form(...),
+        audio: UploadFile = File(...),
+        cover: UploadFile | None = File(default=None),
+        background: UploadFile | None = File(default=None),
+    ) -> AgentRenderResponse:
+        """Create a server-only render job from a compact agent request."""
+
+        try:
+            agent_request = AgentRenderRequest.model_validate_json(request)
+            configuration = agent_request.render_configuration()
+        except ValidationError as error:
+            raise RenderServiceError(
+                422,
+                JobErrorCode.INVALID_REQUEST,
+                "Agent render request is invalid.",
+            ) from error
+        service: RenderJobService = application.state.render_service
+        job = await service.create(
+            config_json=configuration.model_dump_json(by_alias=True),
+            audio=audio,
+            cover=cover,
+            background=background,
+        )
+        return _agent_response(job)
+
+    @application.get("/api/agent/render/{job_id}")
+    async def get_agent_render(job_id: str) -> AgentRenderResponse:
+        service: RenderJobService = application.state.render_service
+        return _agent_response(service.status(job_id))
+
+    @application.post("/api/agent/render/{job_id}/cancel")
+    async def cancel_agent_render(job_id: str) -> AgentRenderResponse:
+        service: RenderJobService = application.state.render_service
+        return _agent_response(service.cancel(job_id))
+
+    @application.delete("/api/agent/render/{job_id}", status_code=204)
+    async def delete_agent_render(job_id: str) -> Response:
+        service: RenderJobService = application.state.render_service
+        service.delete_job(job_id)
+        return Response(status_code=204)
 
     @application.get("/api/render-jobs/{job_id}")
     async def get_render_job(job_id: str):

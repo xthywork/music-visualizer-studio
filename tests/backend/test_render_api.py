@@ -62,6 +62,19 @@ def create_job(client: TestClient) -> dict:
     return response.json()
 
 
+def agent_request_json(**overrides) -> str:
+    request = {
+        "template": "quiet-editorial",
+        "title": "Agent Song",
+        "artist": "Agent Artist",
+        "aspectRatio": "16:9",
+        "resolution": "4k",
+        "frameRate": 60,
+    }
+    request.update(overrides)
+    return json.dumps(request)
+
+
 def test_capability_create_and_status_contract(api) -> None:
     client, _service = api
     capability = client.get("/api/render-capabilities")
@@ -76,6 +89,55 @@ def test_capability_create_and_status_contract(api) -> None:
     status = client.get(f"/api/render-jobs/{created['id']}")
     assert status.status_code == 200
     assert status.json()["id"] == created["id"]
+
+
+def test_agent_api_creates_server_only_job_with_compact_request(api) -> None:
+    client, service = api
+    response = client.post(
+        "/api/agent/render",
+        data={"request": agent_request_json()},
+        files={"audio": ("song.wav", b"RIFF-audio-fixture", "audio/wav")},
+    )
+
+    assert response.status_code == 201, response.text
+    payload = response.json()
+    assert payload["renderMode"] == "server"
+    assert payload["job"]["state"] == "queued"
+    job_id = payload["job"]["id"]
+    assert payload["statusUrl"] == f"/api/agent/render/{job_id}"
+    assert payload["cancelUrl"] == f"/api/agent/render/{job_id}/cancel"
+    assert payload["outputUrl"] == f"/api/render-jobs/{job_id}/output"
+    assert payload["deleteUrl"] == f"/api/agent/render/{job_id}"
+
+    record = service.repository.require(job_id)
+    assert record.configuration.template_id == "quiet-editorial"
+    assert record.configuration.output.width == 3840
+    assert record.configuration.output.height == 2160
+    assert record.configuration.output.frame_rate == 60
+
+    status = client.get(payload["statusUrl"])
+    assert status.status_code == 200
+    assert status.json()["job"]["id"] == job_id
+
+
+def test_agent_api_rejects_client_mode_and_invalid_lyric_request(api) -> None:
+    client, service = api
+    client_mode = client.post(
+        "/api/agent/render",
+        data={"request": agent_request_json(renderMode="client")},
+        files={"audio": ("song.wav", b"RIFF-audio-fixture", "audio/wav")},
+    )
+    lyrics_missing = client.post(
+        "/api/agent/render",
+        data={"request": agent_request_json(template="poetry-lyrics")},
+        files={"audio": ("song.wav", b"RIFF-audio-fixture", "audio/wav")},
+    )
+
+    assert client_mode.status_code == 422
+    assert client_mode.json()["error"]["code"] == "invalid_request"
+    assert lyrics_missing.status_code == 422
+    assert lyrics_missing.json()["error"]["code"] == "invalid_request"
+    assert list(service.repository.iter_jobs()) == []
 
 
 def test_unavailable_worker_rejects_job_before_writing(api) -> None:
