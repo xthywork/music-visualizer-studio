@@ -21,7 +21,7 @@ Browser
                                    WebCodecs + MP4 muxer -> MP4
 ```
 
-The server target is Ubuntu Server 24.04, a Ryzen 9 5900X, and an NVIDIA GPU. One job worker starts 12 frame processes by default to produce RGB frames concurrently with Python, Pillow, and NumPy. The parent keeps at most 12 frames in flight, restores frame-number order, and streams them to one FFmpeg `h264_nvenc` encoder for H.264 `yuv420p` video with AAC. Read-only images and analysis data use Linux fork copy-on-write sharing. Memory remains bounded and does not grow with total video length.
+The server target is Ubuntu Server 24.04, a Ryzen 9 5900X, and an NVIDIA GPU. One job worker starts 12 frame processes by default to produce RGB frames concurrently with Python, Pillow, and NumPy. The parent keeps at most 12 frames in flight, restores frame-number order, and streams them to one FFmpeg `h264_nvenc` encoder for H.264 `yuv420p` video with AAC. Read-only images and analysis data use Linux fork copy-on-write sharing. Memory remains bounded and does not grow with total video length. Each Quiet Editorial process caches the fixed background, cover, typography, and layout; later frames copy that base and draw only audio-reactive content.
 
 This Device mode reuses the same serialized scene configuration. The main thread decodes audio through AudioContext; a module Worker draws frames and uses WebCodecs, then an MP4 muxer produces the Blob. Capability is checked for the selected resolution and frame rate. Client-side 4K60 availability depends on the browser, codecs, and device hardware.
 

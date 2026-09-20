@@ -163,6 +163,25 @@ def test_instrumental_and_editorial_scenes_react_to_audio() -> None:
         assert hashlib.sha256(quiet.tobytes()).digest() != hashlib.sha256(loud.tobytes()).digest()
 
 
+def test_quiet_editorial_static_cache_does_not_capture_dynamic_frame_content() -> None:
+    config = configuration("quiet-editorial", "16:9")
+    assets = SceneAssets(cover=ImageAsset.cover(), background=ImageAsset.background())
+    cached_scene = create_scene(config, assets, font_book())
+    first = SceneFrame(time=0, frame=0, total_frames=120, width=320, height=180, analysis=analysis(0.1))
+    target = SceneFrame(time=2, frame=60, total_frames=120, width=320, height=180, analysis=analysis(0.9))
+    cached_scene.render(first)
+    cached = cached_scene.render(target)
+
+    fresh_scene = create_scene(
+        config,
+        SceneAssets(cover=ImageAsset.cover(), background=ImageAsset.background()),
+        font_book(),
+    )
+    fresh = fresh_scene.render(target)
+
+    assert cached.tobytes() == fresh.tobytes()
+
+
 def test_lyric_scroll_uses_start_only_across_gaps_and_final_cue() -> None:
     cues = configuration("panorama-lyrics", "16:9").lyrics
     assert lyric_scroll(cues, -1)[0] == -1

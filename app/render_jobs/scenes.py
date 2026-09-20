@@ -227,6 +227,15 @@ class InstrumentalScene(_BaseScene):
 
 
 class QuietEditorialScene(_BaseScene):
+    def __init__(
+        self,
+        configuration: RenderConfiguration,
+        assets: SceneAssets,
+        fonts: FontBook,
+    ) -> None:
+        super().__init__(configuration, assets, fonts)
+        self._static_canvases: dict[tuple[int, int], Image.Image] = {}
+
     def render(self, frame: SceneFrame) -> Image.Image:
         width, height = frame.width, frame.height
         short = min(width, height)
@@ -236,28 +245,35 @@ class QuietEditorialScene(_BaseScene):
         ground = "#222723" if dark else "#eee8dd"
         ink = "#eee8dd" if dark else "#282d29"
         muted = "#b9b2a7" if dark else "#575e55"
-        canvas = Image.new("RGBA", (width, height), ground)
-        paste_image(canvas, self.assets.background, (0, 0, width, height), zoom=max(1.05, self.settings.image_zoom), pan_x=self.settings.image_x, pan_y=self.settings.image_y, opacity=self.settings.background)
-        draw = ImageDraw.Draw(canvas, "RGBA")
-        draw.rectangle((0, 0, width, height), fill=rgba("#0e1312" if dark else "#f9f6ec", 0.48 if dark else 0.68))
         margin = width * (0.065 if landscape else 0.09)
-        draw.text((margin, height * 0.075), "NOW PLAYING", font=self.fonts.get(short * 0.014), fill=rgba(ink), anchor="lm")
-        draw.line((margin, height * 0.11, width - margin, height * 0.11), fill=rgba(ink, 0.25), width=max(1, round(short / 800)))
         size = round(short * (0.57 if landscape else 0.76 if portrait else 0.46) * self.settings.cover_scale)
         x = round((width * 0.105 if landscape else (width - size) / 2) + width * self.settings.cover_x / 100)
         y = round((height * 0.225 if landscape else height * 0.205 if portrait else height * 0.165) + height * self.settings.cover_y / 100)
         mount = max(3, round(short * 0.012))
-        draw.rectangle((x - mount, y - mount, x + size + mount, y + size + mount), fill=rgba("#ccc3b2"), outline=rgba("#000000", 0.25), width=mount)
-        self._cover(canvas, (x, y, size, size), dark=dark)
-        draw = ImageDraw.Draw(canvas, "RGBA")
         text_x = width * 0.56 if landscape else (width - size) / 2 - mount
         text_width = width - margin - text_x if landscape else size + mount * 2
         text_y = height * (0.35 if landscape else 0.72 if portrait else 0.70)
-        title_font = self.fonts.get(short * (0.063 if landscape else 0.055 if portrait else 0.042))
-        title = fit_text(draw, self.configuration.text.title, title_font, text_width)
-        draw.text((text_x, text_y), title, font=title_font, fill=rgba(ink), anchor="lm")
-        artist_font = self.fonts.get(short * 0.020)
-        draw.text((text_x, text_y + short * 0.06), fit_text(draw, self.configuration.text.artist or "Unknown Artist", artist_font, text_width), font=artist_font, fill=rgba(muted), anchor="lm")
+        cache_key = (width, height)
+        static_canvas = self._static_canvases.get(cache_key)
+        if static_canvas is None:
+            canvas = Image.new("RGBA", (width, height), ground)
+            paste_image(canvas, self.assets.background, (0, 0, width, height), zoom=max(1.05, self.settings.image_zoom), pan_x=self.settings.image_x, pan_y=self.settings.image_y, opacity=self.settings.background)
+            draw = ImageDraw.Draw(canvas, "RGBA")
+            draw.rectangle((0, 0, width, height), fill=rgba("#0e1312" if dark else "#f9f6ec", 0.48 if dark else 0.68))
+            draw.text((margin, height * 0.075), "NOW PLAYING", font=self.fonts.get(short * 0.014), fill=rgba(ink), anchor="lm")
+            draw.line((margin, height * 0.11, width - margin, height * 0.11), fill=rgba(ink, 0.25), width=max(1, round(short / 800)))
+            draw.rectangle((x - mount, y - mount, x + size + mount, y + size + mount), fill=rgba("#ccc3b2"), outline=rgba("#000000", 0.25), width=mount)
+            self._cover(canvas, (x, y, size, size), dark=dark)
+            draw = ImageDraw.Draw(canvas, "RGBA")
+            title_font = self.fonts.get(short * (0.063 if landscape else 0.055 if portrait else 0.042))
+            title = fit_text(draw, self.configuration.text.title, title_font, text_width)
+            draw.text((text_x, text_y), title, font=title_font, fill=rgba(ink), anchor="lm")
+            artist_font = self.fonts.get(short * 0.020)
+            draw.text((text_x, text_y + short * 0.06), fit_text(draw, self.configuration.text.artist or "Unknown Artist", artist_font, text_width), font=artist_font, fill=rgba(muted), anchor="lm")
+            self._static_canvases[cache_key] = canvas.copy()
+        else:
+            canvas = static_canvas.copy()
+        draw = ImageDraw.Draw(canvas, "RGBA")
         row = frame.analysis.frame_index_at(frame.time)
         spectrum = frame.analysis.temporal_spectrum[row]
         bars = 64
