@@ -12,6 +12,20 @@ DEFAULT_PORT = 34388
 MIB = 1024 * 1024
 GIB = 1024 * MIB
 VideoEncoder = Literal["h264_nvenc", "libx264"]
+NVENC_PRESETS = frozenset({"p1", "p2", "p3", "p4", "p5", "p6", "p7"})
+X264_PRESETS = frozenset(
+    {
+        "ultrafast",
+        "superfast",
+        "veryfast",
+        "faster",
+        "fast",
+        "medium",
+        "slow",
+        "slower",
+        "veryslow",
+    }
+)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -57,6 +71,13 @@ def _env_video_encoder(name: str, default: VideoEncoder) -> VideoEncoder:
     return default
 
 
+def _env_encoder_preset(name: str, encoder: VideoEncoder) -> str:
+    default = "p4" if encoder == "h264_nvenc" else "veryfast"
+    value = os.getenv(name)
+    allowed = NVENC_PRESETS if encoder == "h264_nvenc" else X264_PRESETS
+    return value if value in allowed else default
+
+
 def _default_data_root() -> Path:
     xdg_root = os.getenv("XDG_DATA_HOME")
     base = Path(xdg_root).expanduser() if xdg_root else Path.home() / ".local" / "share"
@@ -85,6 +106,7 @@ class Settings:
     frame_workers: int = 12
     video_encoder: VideoEncoder = "h264_nvenc"
     encoder_threads: int = 8
+    encoder_preset: str | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -95,6 +117,9 @@ class Settings:
         repository's ``frontend/dist`` directory at startup.
         """
 
+        video_encoder = _env_video_encoder(
+            "VISUALIZER_VIDEO_ENCODER", "h264_nvenc"
+        )
         return cls(
             host=os.getenv("VISUALIZER_HOST", DEFAULT_HOST),
             port=_env_int("VISUALIZER_PORT", DEFAULT_PORT),
@@ -114,8 +139,9 @@ class Settings:
             worker_enabled=_env_bool("VISUALIZER_WORKER_ENABLED", True),
             worker_poll_ms=_env_positive_int("VISUALIZER_WORKER_POLL_MS", 250),
             frame_workers=_env_positive_int("VISUALIZER_FRAME_WORKERS", 12),
-            video_encoder=_env_video_encoder(
-                "VISUALIZER_VIDEO_ENCODER", "h264_nvenc"
-            ),
+            video_encoder=video_encoder,
             encoder_threads=_env_positive_int("VISUALIZER_ENCODER_THREADS", 8),
+            encoder_preset=_env_encoder_preset(
+                "VISUALIZER_ENCODER_PRESET", video_encoder
+            ),
         )

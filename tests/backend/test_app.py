@@ -22,6 +22,7 @@ def test_settings_use_documented_defaults(monkeypatch) -> None:
     assert settings.frame_workers == 12
     assert settings.video_encoder == "h264_nvenc"
     assert settings.encoder_threads == 8
+    assert settings.encoder_preset == "p4"
     assert settings.max_audio_bytes == 256 * 1024 * 1024
     assert settings.max_image_bytes == 3840 * 2160
 
@@ -36,6 +37,7 @@ def test_settings_can_be_overridden_by_environment(monkeypatch) -> None:
     monkeypatch.setenv("VISUALIZER_FRAME_WORKERS", "6")
     monkeypatch.setenv("VISUALIZER_VIDEO_ENCODER", "libx264")
     monkeypatch.setenv("VISUALIZER_ENCODER_THREADS", "4")
+    monkeypatch.setenv("VISUALIZER_ENCODER_PRESET", "superfast")
 
     settings = Settings.from_env()
 
@@ -48,6 +50,7 @@ def test_settings_can_be_overridden_by_environment(monkeypatch) -> None:
     assert settings.frame_workers == 6
     assert settings.video_encoder == "libx264"
     assert settings.encoder_threads == 4
+    assert settings.encoder_preset == "superfast"
 
 
 def test_invalid_runtime_limits_fall_back_to_safe_defaults(monkeypatch) -> None:
@@ -57,6 +60,7 @@ def test_invalid_runtime_limits_fall_back_to_safe_defaults(monkeypatch) -> None:
     monkeypatch.setenv("VISUALIZER_FRAME_WORKERS", "0")
     monkeypatch.setenv("VISUALIZER_VIDEO_ENCODER", "unknown")
     monkeypatch.setenv("VISUALIZER_ENCODER_THREADS", "0")
+    monkeypatch.setenv("VISUALIZER_ENCODER_PRESET", "not-a-preset")
 
     settings = Settings.from_env()
 
@@ -66,6 +70,16 @@ def test_invalid_runtime_limits_fall_back_to_safe_defaults(monkeypatch) -> None:
     assert settings.frame_workers == 12
     assert settings.video_encoder == "h264_nvenc"
     assert settings.encoder_threads == 8
+    assert settings.encoder_preset == "p4"
+
+
+def test_invalid_software_preset_falls_back_for_selected_encoder(monkeypatch) -> None:
+    monkeypatch.setenv("VISUALIZER_VIDEO_ENCODER", "libx264")
+    monkeypatch.setenv("VISUALIZER_ENCODER_PRESET", "p4")
+
+    settings = Settings.from_env()
+
+    assert settings.encoder_preset == "veryfast"
 
 
 def test_health_endpoint_is_available_without_audio_api() -> None:

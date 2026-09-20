@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Protocol
 
 from .models import JobErrorCode
+from .encoder import resolve_encoder_preset
 from .process import ProcessAdapter, ProcessAdapterError
 
 
@@ -37,6 +38,7 @@ class EncoderProbe:
         ffprobe: CommandRunner,
         encoder: str = "h264_nvenc",
         encoder_threads: int | None = None,
+        encoder_preset: str | None = None,
         timeout_seconds: float = 15,
     ) -> None:
         self.work_root = work_root
@@ -44,6 +46,7 @@ class EncoderProbe:
         self.ffprobe = ffprobe
         self.encoder = encoder
         self.encoder_threads = encoder_threads
+        self.encoder_preset = encoder_preset
         self.timeout_seconds = timeout_seconds
 
     @classmethod
@@ -55,6 +58,7 @@ class EncoderProbe:
         ffprobe_path: str,
         encoder: str = "h264_nvenc",
         encoder_threads: int | None = None,
+        encoder_preset: str | None = None,
     ) -> "EncoderProbe":
         return cls(
             work_root,
@@ -70,6 +74,7 @@ class EncoderProbe:
             ),
             encoder=encoder,
             encoder_threads=encoder_threads,
+            encoder_preset=encoder_preset,
         )
 
     def check(self) -> ProbeResult:
@@ -114,7 +119,7 @@ class EncoderProbe:
             "-c:v",
             self.encoder,
             "-preset",
-            "p4" if self.encoder.endswith("_nvenc") else "veryfast",
+            resolve_encoder_preset(self.encoder, self.encoder_preset),
             "-profile:v",
             "high",
             "-pix_fmt",

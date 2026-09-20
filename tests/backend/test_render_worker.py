@@ -49,6 +49,7 @@ def test_job_renderer_uses_configured_software_encoder(tmp_path: Path) -> None:
         data_root=tmp_path / "data",
         video_encoder="libx264",
         encoder_threads=8,
+        encoder_preset="ultrafast",
     )
     storage = JobStorage(
         settings.data_root,
@@ -60,6 +61,7 @@ def test_job_renderer_uses_configured_software_encoder(tmp_path: Path) -> None:
 
     assert renderer.encoder.encoder == "libx264"
     assert renderer.encoder.encoder_threads == 8
+    assert renderer.encoder.encoder_preset == "ultrafast"
 
 
 def queued_job(repository: JobRepository, storage: JobStorage) -> str:

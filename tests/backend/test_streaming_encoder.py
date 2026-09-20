@@ -11,6 +11,7 @@ from app.render_jobs.encoder import (
     RenderCancelled,
     StreamingEncoder,
     encoder_arguments,
+    resolve_encoder_preset,
     video_bitrate,
 )
 from app.render_jobs.models import JobErrorCode, OutputConfiguration
@@ -59,6 +60,25 @@ def test_encoder_command_uses_encoder_specific_preset_namespaces(tmp_path: Path)
     assert software[software.index("-threads") + 1] == "8"
     assert "p4" not in software
     assert "-threads" not in nvenc
+
+
+def test_software_preset_can_be_selected_without_crossing_encoder_namespaces(
+    tmp_path: Path,
+) -> None:
+    arguments = encoder_arguments(
+        output(),
+        audio_path=tmp_path / "audio.wav",
+        partial_path=tmp_path / "output.part.mp4",
+        duration=1,
+        encoder="libx264",
+        encoder_preset="ultrafast",
+    )
+
+    assert arguments[arguments.index("-preset") + 1] == "ultrafast"
+    with pytest.raises(ValueError, match="unsupported preset"):
+        resolve_encoder_preset("libx264", "p4")
+    with pytest.raises(ValueError, match="unsupported preset"):
+        resolve_encoder_preset("h264_nvenc", "ultrafast")
 
 
 def test_bitrate_policy_covers_presets() -> None:

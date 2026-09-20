@@ -16,6 +16,21 @@ from PIL import Image
 from .models import JobErrorCode, OutputConfiguration
 from .process import ManagedProcess, ProcessAdapter, ProcessAdapterError
 
+NVENC_PRESETS = frozenset({"p1", "p2", "p3", "p4", "p5", "p6", "p7"})
+X264_PRESETS = frozenset(
+    {
+        "ultrafast",
+        "superfast",
+        "veryfast",
+        "faster",
+        "fast",
+        "medium",
+        "slow",
+        "slower",
+        "veryslow",
+    }
+)
+
 
 class RenderCancelled(RuntimeError):
     pass
@@ -44,6 +59,15 @@ def video_bitrate(output: OutputConfiguration) -> str:
     return f"{base}M"
 
 
+def resolve_encoder_preset(encoder: str, preset: str | None) -> str:
+    allowed = NVENC_PRESETS if encoder.endswith("_nvenc") else X264_PRESETS
+    default = "p4" if encoder.endswith("_nvenc") else "veryfast"
+    selected = preset or default
+    if selected not in allowed:
+        raise ValueError(f"unsupported preset {selected!r} for {encoder}")
+    return selected
+
+
 def encoder_arguments(
     output: OutputConfiguration,
     *,
@@ -52,13 +76,14 @@ def encoder_arguments(
     duration: float,
     encoder: str = "h264_nvenc",
     encoder_threads: int | None = None,
+    encoder_preset: str | None = None,
 ) -> list[str]:
     if not math.isfinite(duration) or duration <= 0:
         raise ValueError("duration must be positive and finite")
     bitrate = video_bitrate(output)
     # NVENC and libx264 use different preset namespaces.  The software
     # integration path must not inherit the production-only NVENC `p4` value.
-    preset = "p4" if encoder.endswith("_nvenc") else "veryfast"
+    preset = resolve_encoder_preset(encoder, encoder_preset)
     arguments = [
         "-hide_banner",
         "-loglevel",
@@ -126,11 +151,13 @@ class StreamingEncoder:
         *,
         encoder: str = "h264_nvenc",
         encoder_threads: int | None = None,
+        encoder_preset: str | None = None,
         pipe_poll_seconds: float = 0.1,
     ) -> None:
         self.runner = runner
         self.encoder = encoder
         self.encoder_threads = encoder_threads
+        self.encoder_preset = encoder_preset
         self.pipe_poll_seconds = pipe_poll_seconds
 
     @classmethod
@@ -140,6 +167,7 @@ class StreamingEncoder:
         *,
         encoder: str = "h264_nvenc",
         encoder_threads: int | None = None,
+        encoder_preset: str | None = None,
     ) -> "StreamingEncoder":
         return cls(
             ProcessAdapter(
@@ -149,6 +177,7 @@ class StreamingEncoder:
             ),
             encoder=encoder,
             encoder_threads=encoder_threads,
+            encoder_preset=encoder_preset,
         )
 
     def encode(
@@ -175,6 +204,7 @@ class StreamingEncoder:
                 duration=duration,
                 encoder=self.encoder,
                 encoder_threads=self.encoder_threads,
+                encoder_preset=self.encoder_preset,
             ),
             stdin=subprocess.PIPE,
         )

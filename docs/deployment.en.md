@@ -36,10 +36,11 @@ A host without NVENC can select the CPU encoder:
 VISUALIZER_VIDEO_ENCODER=libx264 \
 VISUALIZER_FRAME_WORKERS=24 \
 VISUALIZER_ENCODER_THREADS=8 \
+VISUALIZER_ENCODER_PRESET=veryfast \
 uv run music-visualizer
 ```
 
-`VISUALIZER_ENCODER_THREADS` applies only to `libx264`. The 24/8 allocation suits 32 single-threaded CPU cores; other hosts should reserve enough cores for the encoder and operating system. The default remains `h264_nvenc`, so existing GPU deployments need no configuration change.
+`VISUALIZER_ENCODER_THREADS` applies only to `libx264`. Its preset defaults to `veryfast`; `VISUALIZER_ENCODER_PRESET=superfast` or `ultrafast` trades compression efficiency and quality at the same bitrate for speed. The 24/8 allocation suits 32 single-threaded CPU cores; other hosts should reserve enough cores for the encoder and operating system. Existing GPU deployments retain the `h264_nvenc` and `p4` defaults.
 
 The UI defaults to Server. Users can select This Device at the bottom of the project list to generate with AudioContext, a Web Worker, WebCodecs, and an MP4 muxer without using server CPU/GPU. Client mode requires a modern browser with WebCodecs, module Workers, and support for the selected codec and dimensions; capability is rechecked when output settings change. An unavailable mode disables generation for that mode and never switches automatically.
 

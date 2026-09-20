@@ -227,6 +227,7 @@ class JobRenderer:
             settings.ffmpeg_path,
             encoder=settings.video_encoder,
             encoder_threads=settings.encoder_threads,
+            encoder_preset=settings.encoder_preset,
         )
 
     def __call__(
@@ -289,10 +290,12 @@ class JobRenderer:
             )
         elapsed = max(0.001, time.monotonic() - started)
         LOGGER.info(
-            "render job %s produced %d frames with %d frame workers in %.2fs (%.2f fps)",
+            "render job %s produced %d frames with %d frame workers and %s/%s in %.2fs (%.2f fps)",
             record.id,
             total_frames,
             self.settings.frame_workers,
+            self.settings.video_encoder,
+            self.settings.encoder_preset or "default",
             elapsed,
             total_frames / elapsed,
         )
@@ -366,6 +369,7 @@ class WorkerSupervisor:
             ffprobe_path=self.settings.ffprobe_path,
             encoder=self.settings.video_encoder,
             encoder_threads=self.settings.encoder_threads,
+            encoder_preset=self.settings.encoder_preset,
         )
         if not update_worker_readiness(probe, self.readiness).ready:
             return False

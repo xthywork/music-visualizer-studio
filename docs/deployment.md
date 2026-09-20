@@ -36,10 +36,11 @@ Worker 的 preflight 會實際編碼短 H.264 `yuv420p` MP4，再由 `ffprobe` �
 VISUALIZER_VIDEO_ENCODER=libx264 \
 VISUALIZER_FRAME_WORKERS=24 \
 VISUALIZER_ENCODER_THREADS=8 \
+VISUALIZER_ENCODER_PRESET=veryfast \
 uv run music-visualizer
 ```
 
-`VISUALIZER_ENCODER_THREADS` 只套用於 `libx264`。以上 24/8 配置適合 32 個單執行緒 CPU 核心；其他主機應保留足夠核心給 encoder 與作業系統。預設仍是 `h264_nvenc`，既有 GPU 部署不需修改設定。
+`VISUALIZER_ENCODER_THREADS` 只套用於 `libx264`。軟體 encoder 的 preset 預設為 `veryfast`，可用 `VISUALIZER_ENCODER_PRESET=superfast` 或 `ultrafast` 換取速度，但相同 bitrate 下壓縮效率及畫質會下降。以上 24/8 配置適合 32 個單執行緒 CPU 核心；其他主機應保留足夠核心給 encoder 與作業系統。預設仍是 `h264_nvenc` 與 `p4`，既有 GPU 部署不需修改設定。
 
 介面預設選擇「伺服器」。使用者也可在專案列表底部改選「此裝置」，由瀏覽器以 AudioContext、Web Worker、WebCodecs 與 MP4 muxer 生成，不使用伺服器 CPU/GPU。客戶端模式需要支援 WebCodecs、module Worker 與所選 codec/解析度的現代瀏覽器；實際能力會隨輸出設定重新檢查。任一模式不可用時只會停用該模式的生成，不會自動切換。
 

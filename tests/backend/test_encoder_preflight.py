@@ -114,9 +114,10 @@ def test_software_encoder_uses_same_probe_contract(tmp_path: Path) -> None:
         ),
         encoder="libx264",
         encoder_threads=4,
+        encoder_preset="superfast",
     )
     arguments = probe.encode_arguments(tmp_path / "probe.mp4")
-    assert arguments[arguments.index("-preset") + 1] == "veryfast"
+    assert arguments[arguments.index("-preset") + 1] == "superfast"
     assert arguments[arguments.index("-threads") + 1] == "4"
     assert probe.check().ready is True
 
