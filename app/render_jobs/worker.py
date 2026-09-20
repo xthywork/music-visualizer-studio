@@ -5,23 +5,23 @@ from __future__ import annotations
 import logging
 import math
 import multiprocessing
-import os
 import threading
 import time
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from multiprocessing.process import BaseProcess
 from pathlib import Path
 from typing import Protocol
 
 from .audio import AudioAnalysisError, analyze_audio
 from .encoder import RenderCancelled, StreamingEncoder
+from .frames import FramePlan, ParallelFrameSource
 from .lifecycle import JobLifecycle
 from .models import JobErrorCode, JobState
 from .preflight import EncoderProbe, update_worker_readiness
 from .process import ProcessAdapterError
 from .repository import JobRecord, JobRepository
-from .scene import FontBook, SceneFrame
+from .scene import FontBook
 from .scenes import create_scene, load_scene_assets
 from .service import WorkerReadiness
 from .storage import AssetKind, JobStorage
@@ -61,6 +61,7 @@ class RenderWorker:
 
         last_cancel_poll = float("-inf")
         cancel_requested = False
+        last_progress_write = float("-inf")
 
         def user_cancelled() -> bool:
             return self.repository.is_cancel_requested(
@@ -80,6 +81,10 @@ class RenderWorker:
             return cancel_requested
 
         def progress(frame: int, total: int, eta: float | None) -> None:
+            nonlocal last_progress_write
+            now = time.monotonic()
+            if frame < total and now - last_progress_write < 0.25:
+                return
             self.repository.update_progress(
                 record.id,
                 self.worker_id,
@@ -87,6 +92,7 @@ class RenderWorker:
                 total_frames=total,
                 eta_seconds=eta,
             )
+            last_progress_write = now
 
         try:
             output_relpath = self.execute(record, self.worker_id, cancelled, progress)
@@ -252,31 +258,38 @@ class JobRenderer:
         output = record.configuration.output
         total_frames = max(1, math.ceil(duration * output.frame_rate))
 
-        def frames() -> Iterator:
-            for frame_number in range(total_frames):
-                if cancelled():
-                    raise RenderCancelled("Render cancellation was requested.")
-                yield scene.render(
-                    SceneFrame(
-                        time=frame_number / output.frame_rate,
-                        frame=frame_number,
-                        total_frames=total_frames,
-                        width=output.width,
-                        height=output.height,
-                        analysis=analysis,
-                    )
-                )
-
-        self.encoder.encode(
-            frames(),
-            output,
-            audio_path=audio_path,
-            partial_path=self.storage.work_path(record.id, "output.part.mp4"),
-            final_path=self.storage.output_path(record.id),
-            duration=duration,
-            total_frames=total_frames,
+        started = time.monotonic()
+        with ParallelFrameSource(
+            scene,
+            analysis,
+            FramePlan(
+                total_frames=total_frames,
+                width=output.width,
+                height=output.height,
+                frame_rate=output.frame_rate,
+            ),
+            workers=self.settings.frame_workers,
             cancelled=cancelled,
-            progress=progress,
+        ) as frames:
+            self.encoder.encode(
+                frames,
+                output,
+                audio_path=audio_path,
+                partial_path=self.storage.work_path(record.id, "output.part.mp4"),
+                final_path=self.storage.output_path(record.id),
+                duration=duration,
+                total_frames=total_frames,
+                cancelled=cancelled,
+                progress=progress,
+            )
+        elapsed = max(0.001, time.monotonic() - started)
+        LOGGER.info(
+            "render job %s produced %d frames with %d frame workers in %.2fs (%.2f fps)",
+            record.id,
+            total_frames,
+            self.settings.frame_workers,
+            elapsed,
+            total_frames / elapsed,
         )
         return self.storage.output_relative_path(record.id)
 

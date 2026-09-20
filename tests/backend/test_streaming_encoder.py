@@ -88,6 +88,26 @@ def test_wrong_frame_dimensions_terminate_and_remove_partial(tmp_path: Path) -> 
     assert not partial.exists()
 
 
+def test_wrong_raw_frame_byte_length_terminates_and_removes_partial(tmp_path: Path) -> None:
+    runner = ProcessAdapter(
+        sys.executable,
+        error_code=JobErrorCode.ENCODE_FAILED,
+        label="fake encoder",
+    )
+    partial = tmp_path / "partial.mp4"
+    with pytest.raises(ValueError, match="wrong byte length"):
+        StreamingEncoder(runner, encoder="ignored").encode(
+            [b"too short"],
+            output(),
+            audio_path=tmp_path / "audio.bin",
+            partial_path=partial,
+            final_path=tmp_path / "final.mp4",
+            duration=1,
+            total_frames=1,
+        )
+    assert not partial.exists()
+
+
 def test_cancellation_breaks_out_when_child_stops_reading_pipe(tmp_path: Path) -> None:
     runner = ProcessAdapter(
         sys.executable,

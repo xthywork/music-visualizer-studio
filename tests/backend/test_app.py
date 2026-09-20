@@ -19,6 +19,7 @@ def test_settings_use_documented_defaults(monkeypatch) -> None:
     assert settings.ffprobe_path == "ffprobe"
     assert settings.worker_enabled is True
     assert settings.worker_poll_ms == 250
+    assert settings.frame_workers == 12
     assert settings.max_audio_bytes == 256 * 1024 * 1024
     assert settings.max_image_bytes == 3840 * 2160
 
@@ -30,6 +31,7 @@ def test_settings_can_be_overridden_by_environment(monkeypatch) -> None:
     monkeypatch.setenv("VISUALIZER_FFMPEG", "/usr/local/bin/ffmpeg")
     monkeypatch.setenv("VISUALIZER_WORKER_ENABLED", "false")
     monkeypatch.setenv("VISUALIZER_WORKER_POLL_MS", "500")
+    monkeypatch.setenv("VISUALIZER_FRAME_WORKERS", "6")
 
     settings = Settings.from_env()
 
@@ -39,18 +41,21 @@ def test_settings_can_be_overridden_by_environment(monkeypatch) -> None:
     assert settings.ffmpeg_path == "/usr/local/bin/ffmpeg"
     assert settings.worker_enabled is False
     assert settings.worker_poll_ms == 500
+    assert settings.frame_workers == 6
 
 
 def test_invalid_runtime_limits_fall_back_to_safe_defaults(monkeypatch) -> None:
     monkeypatch.setenv("VISUALIZER_MAX_QUEUE_DEPTH", "0")
     monkeypatch.setenv("VISUALIZER_MAX_AUDIO_BYTES", "not-a-number")
     monkeypatch.setenv("VISUALIZER_WORKER_ENABLED", "maybe")
+    monkeypatch.setenv("VISUALIZER_FRAME_WORKERS", "0")
 
     settings = Settings.from_env()
 
     assert settings.max_queue_depth == 100
     assert settings.max_audio_bytes == 256 * 1024 * 1024
     assert settings.worker_enabled is True
+    assert settings.frame_workers == 12
 
 
 def test_health_endpoint_is_available_without_audio_api() -> None:

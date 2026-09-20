@@ -9,7 +9,7 @@
 - An NVIDIA driver and FFmpeg/`ffprobe` with `h264_nvenc` for hardware acceptance
 - Node.js and npm only for developers changing frontend source
 
-There are two production output paths. Server mode uses FFmpeg decoding, NumPy analysis, CPU Pillow frame drawing, NVIDIA `h264_nvenc`, and AAC; SQLite stores the single-host queue and one background worker processes jobs in order by default. This Device mode reuses the scene configuration and generates in the browser with AudioContext, a module Worker, WebCodecs, and an MP4 muxer.
+There are two production output paths. Server mode uses FFmpeg decoding and NumPy analysis, then 12 bounded processes draw Pillow frames concurrently and feed them in order to NVIDIA `h264_nvenc` with AAC. SQLite stores the single-host queue and one background job worker processes jobs in order. This Device mode reuses the scene configuration and generates in the browser with AudioContext, a module Worker, WebCodecs, and an MP4 muxer.
 
 ## Python development and software checks
 

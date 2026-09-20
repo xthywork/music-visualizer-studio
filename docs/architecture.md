@@ -21,7 +21,7 @@
                                    WebCodecs + MP4 muxer → MP4
 ```
 
-伺服器部署目標為 Ubuntu Server 24.04、Ryzen 9 5900X 與 NVIDIA GPU。Worker 以 Python、Pillow 與 NumPy 在 CPU 上逐幀產生 RGB 畫面；FFmpeg 將畫面串流給 `h264_nvenc`，以 H.264 `yuv420p` 編碼，並把來源音訊編碼為 AAC，封裝為 MP4。Frame pipeline 有界，記憶體不會隨影片總幀數累積。
+伺服器部署目標為 Ubuntu Server 24.04、Ryzen 9 5900X 與 NVIDIA GPU。單一 job worker 預設建立 12 個 frame process，以 Python、Pillow 與 NumPy 平行產生 RGB 畫面；父程序只保留最多 12 個在途 frame，依 frame number 排序後串流給單一 FFmpeg `h264_nvenc` encoder，以 H.264 `yuv420p` 與 AAC 封裝 MP4。唯讀圖片與分析資料以 Linux fork copy-on-write 共享，記憶體有界且不會隨影片總幀數累積。
 
 此裝置模式復用相同的序列化 scene configuration。主執行緒以 AudioContext 解碼音訊，module Worker 執行逐幀場景與 WebCodecs 編碼，再由 MP4 muxer 產生 Blob。可用性依所選解析度與幀率檢查；4K60 是否可用取決於客戶端瀏覽器、codec 與硬體。
 

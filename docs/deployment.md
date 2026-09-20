@@ -48,6 +48,14 @@ VISUALIZER_HOST=127.0.0.1 VISUALIZER_PORT=34388 uv run music-visualizer
 
 預設資料根目錄為 `~/.local/share/music-visualizer`，可用 `VISUALIZER_DATA_ROOT` 指定其他持久目錄。該目錄含 SQLite、暫存工作檔與完成輸出；容量限制可透過 `VISUALIZER_STORAGE_CEILING_BYTES` 與 `VISUALIZER_MINIMUM_FREE_BYTES` 調整。完成 MP4 不會自動過期，刪除輸出或工作前應先確認不再需要該檔案。
 
+伺服器每個 render job 預設使用 12 個 CPU frame process，適合 Ryzen 9 5900X 的 12 個實體核心。可用 `VISUALIZER_FRAME_WORKERS` 調整，例如在較小主機設為 4：
+
+```bash
+VISUALIZER_FRAME_WORKERS=4 uv run music-visualizer
+```
+
+Frame pipeline 最多保留與 worker 數相同的在途 RGB frame；提高數量會增加 RAM 與 process/IPC 負擔，不應設成 5900X 的 24 個 SMT 執行緒。使用 systemd 時將變數放在 unit 的 `Environment=`，修改後執行 `daemon-reload` 與 restart。
+
 前端修改者需在 `frontend/` 執行 `npm ci`、`npm run build`，並提交變更後的 `frontend/dist`。一般部署不安裝 Node.js/npm。
 
 ## 硬體驗收

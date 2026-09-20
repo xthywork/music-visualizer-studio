@@ -9,7 +9,7 @@
 - NVIDIA driver 與支援 `h264_nvenc` 的 FFmpeg/`ffprobe` 用於硬體驗收
 - Node.js 與 npm 僅供修改前端 source 的開發者使用
 
-正式輸出有兩條 production path。伺服器模式由 FFmpeg 解碼、NumPy 分析、Pillow 在 CPU 逐幀繪製，再以 NVIDIA `h264_nvenc` 和 AAC 輸出 MP4；SQLite 保存單機佇列，預設單一背景 worker 依序處理。此裝置模式復用 scene configuration，以 AudioContext、module Worker、WebCodecs 與 MP4 muxer 在瀏覽器生成。
+正式輸出有兩條 production path。伺服器模式由 FFmpeg 解碼、NumPy 分析，預設 12 個有界 process 以 Pillow 平行繪製 frame，再依序送入 NVIDIA `h264_nvenc` 和 AAC 輸出 MP4；SQLite 保存單機佇列，單一背景 job worker 依序處理工作。此裝置模式復用 scene configuration，以 AudioContext、module Worker、WebCodecs 與 MP4 muxer 在瀏覽器生成。
 
 ## Python 開發與軟體測試
 

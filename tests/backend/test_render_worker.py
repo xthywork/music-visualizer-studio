@@ -99,6 +99,40 @@ def test_worker_throttles_repeated_database_cancel_checks(
     assert cancel_checks == 2
 
 
+def test_worker_throttles_frame_progress_writes_but_always_writes_final_frame(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository, storage, lifecycle = services(tmp_path)
+    job_id = queued_job(repository, storage)
+    writes: list[int] = []
+    real_update = repository.update_progress
+
+    def record_progress(job: str, worker: str, *, frame: int, total_frames: int, eta_seconds: float | None) -> bool:
+        writes.append(frame)
+        return real_update(
+            job,
+            worker,
+            frame=frame,
+            total_frames=total_frames,
+            eta_seconds=eta_seconds,
+        )
+
+    monkeypatch.setattr(repository, "update_progress", record_progress)
+    ticks = iter([0.0, 0.05, 0.10, 0.15, 0.20])
+    monkeypatch.setattr(worker_module.time, "monotonic", lambda: next(ticks))
+
+    def execute(record, _worker, _cancelled, progress):  # type: ignore[no-untyped-def]
+        for frame in range(1, 6):
+            progress(frame, 5, 1.0)
+        storage.output_path(record.id).write_bytes(b"mp4")
+        return storage.output_relative_path(record.id)
+
+    RenderWorker(repository, lifecycle, execute, worker_id="worker").run_once()
+
+    assert writes == [1, 5]
+    assert repository.require(job_id).state == JobState.COMPLETED
+
+
 def test_cancel_after_output_publication_wins_and_removes_output(tmp_path: Path) -> None:
     repository, storage, lifecycle = services(tmp_path)
     job_id = queued_job(repository, storage)

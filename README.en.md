@@ -16,7 +16,7 @@ Choose audio and template -> Configure output and render location -> Generate ->
 - Project settings and parsed subtitle text stay in browser-local storage; source audio is never written to a project record
 - The server uses Pillow and NumPy on the CPU for audio analysis and frame-by-frame scene drawing, then NVIDIA NVENC encodes H.264 `yuv420p` video with AAC audio into MP4
 - This Device mode uses AudioContext, a Web Worker, WebCodecs, and an MP4 muxer for browser-side analysis, drawing, and packaging. Availability is checked for the browser and selected output, with no automatic mode fallback
-- SQLite stores the single-host job queue and status; one background worker renders jobs in order by default
+- SQLite stores the single-host job queue and status. One background job worker processes jobs in order; each job uses 12 bounded frame processes and feeds their ordered output into one NVENC encoder
 - Server source assets are temporary and completed server MP4s remain until explicitly deleted. Client MP4s are stored in browser IndexedDB when quota permits
 
 ## Server requirements

@@ -136,7 +136,7 @@ class StreamingEncoder:
 
     def encode(
         self,
-        frames: Iterable[Image.Image],
+        frames: Iterable[Image.Image | bytes],
         output: OutputConfiguration,
         *,
         audio_path: Path,
@@ -176,12 +176,18 @@ class StreamingEncoder:
                         break
                     if cancelled():
                         raise RenderCancelled("Render cancellation was requested.")
-                    if frame.mode != "RGB" or frame.size != (output.width, output.height):
-                        raise ValueError("scene returned a frame with the wrong mode or dimensions")
+                    if isinstance(frame, bytes):
+                        payload = frame
+                        if len(payload) != output.width * output.height * 3:
+                            raise ValueError("scene returned a frame with the wrong byte length")
+                    else:
+                        if frame.mode != "RGB" or frame.size != (output.width, output.height):
+                            raise ValueError("scene returned a frame with the wrong mode or dimensions")
+                        payload = frame.tobytes()
                     self._write_frame(
                         process,
                         selector,
-                        frame.tobytes(),
+                        payload,
                         cancelled=cancelled,
                     )
                     written_frames += 1

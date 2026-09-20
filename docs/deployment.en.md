@@ -48,6 +48,14 @@ VISUALIZER_HOST=127.0.0.1 VISUALIZER_PORT=34388 uv run music-visualizer
 
 The default data root is `~/.local/share/music-visualizer`; set `VISUALIZER_DATA_ROOT` to use another persistent directory. It contains SQLite, temporary job files, and completed outputs. Adjust capacity limits with `VISUALIZER_STORAGE_CEILING_BYTES` and `VISUALIZER_MINIMUM_FREE_BYTES`. Completed MP4s do not expire automatically; verify an output is no longer needed before deleting it.
 
+Each server render job uses 12 CPU frame processes by default, matching the 12 physical cores of a Ryzen 9 5900X. Set `VISUALIZER_FRAME_WORKERS` for a smaller host, for example:
+
+```bash
+VISUALIZER_FRAME_WORKERS=4 uv run music-visualizer
+```
+
+The pipeline keeps at most one in-flight RGB frame per worker. Raising the count increases RAM and process/IPC overhead; do not treat the 5900X's 24 SMT threads as 24 physical cores. For systemd, place the variable in an `Environment=` line, then run `daemon-reload` and restart the service.
+
 Frontend developers run `npm ci` and `npm run build` in `frontend/` and commit the updated `frontend/dist`. Normal deployments do not install Node.js/npm.
 
 ## Hardware acceptance

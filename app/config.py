@@ -73,6 +73,7 @@ class Settings:
     minimum_free_bytes: int = 2 * GIB
     worker_enabled: bool = True
     worker_poll_ms: int = 250
+    frame_workers: int = 12
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -101,4 +102,5 @@ class Settings:
             minimum_free_bytes=_env_positive_int("VISUALIZER_MINIMUM_FREE_BYTES", 2 * GIB),
             worker_enabled=_env_bool("VISUALIZER_WORKER_ENABLED", True),
             worker_poll_ms=_env_positive_int("VISUALIZER_WORKER_POLL_MS", 250),
+            frame_workers=_env_positive_int("VISUALIZER_FRAME_WORKERS", 12),
         )

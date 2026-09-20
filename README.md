@@ -16,7 +16,7 @@ Music Visualizer Studio 將音訊與視覺模板製作成可下載的 MP4。使�
 - 專案設定與字幕文字保存在瀏覽器本機；來源音訊不寫入專案紀錄
 - 伺服器以 Pillow 與 NumPy 在 CPU 上分析音訊並逐幀繪製場景，再由 NVIDIA NVENC 編碼 H.264 `yuv420p` 影片，搭配 AAC 音訊封裝成 MP4
 - 此裝置模式以 AudioContext、Web Worker、WebCodecs 與 MP4 muxer 在瀏覽器完成分析、繪製與封裝；是否可用依瀏覽器和所選輸出即時檢查，不會自動切換模式
-- SQLite 保存單機工作佇列與狀態，預設由一個背景 worker 依序渲染
+- SQLite 保存單機工作佇列與狀態，預設由一個背景 job worker 依序處理工作；每個工作使用 12 個有界 frame process 平行繪圖，再依序送入單一 NVENC encoder
 - 伺服器暫存來源素材會在工作終止後清除，完成 MP4 留存至明確刪除；客戶端 MP4 在容量允許時保存於瀏覽器 IndexedDB
 
 ## 伺服器需求

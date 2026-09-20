@@ -54,7 +54,10 @@ def test_software_pipeline_produces_h264_aac_mp4_with_expected_metadata(tmp_path
         encoder="libx264",
     )
     encoder.encode(
-        (Image.new("RGB", (1280, 720), (20 + frame * 5, 40, 60)) for frame in range(frame_count)),
+        (
+            Image.new("RGB", (1280, 720), (20 + frame * 5, 40, 60)).tobytes()
+            for frame in range(frame_count)
+        ),
         configuration,
         audio_path=audio,
         partial_path=partial,
