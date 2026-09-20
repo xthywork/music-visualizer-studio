@@ -59,13 +59,25 @@ class RenderWorker:
         if record is None:
             return False
 
+        last_cancel_poll = float("-inf")
+        cancel_requested = False
+
         def user_cancelled() -> bool:
             return self.repository.is_cancel_requested(
                 record.id, self.worker_id
             )
 
         def cancelled() -> bool:
-            return bool(stop and stop.is_set()) or user_cancelled()
+            nonlocal last_cancel_poll, cancel_requested
+            if stop and stop.is_set():
+                return True
+            if cancel_requested:
+                return True
+            now = time.monotonic()
+            if now - last_cancel_poll >= 0.1:
+                cancel_requested = user_cancelled()
+                last_cancel_poll = now
+            return cancel_requested
 
         def progress(frame: int, total: int, eta: float | None) -> None:
             self.repository.update_progress(
@@ -78,7 +90,10 @@ class RenderWorker:
 
         try:
             output_relpath = self.execute(record, self.worker_id, cancelled, progress)
-            if cancelled():
+            # Force one authoritative database read at the publication
+            # boundary so a request received inside the polling interval still
+            # wins over a late completion.
+            if bool(stop and stop.is_set()) or user_cancelled():
                 self._discard_output(record)
                 if user_cancelled():
                     self._finish_cancelled(record)

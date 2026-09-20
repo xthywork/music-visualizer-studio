@@ -1,8 +1,10 @@
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
+from app.render_jobs import repository as repository_module
 from app.render_jobs.models import JobErrorCode, JobState, RenderConfiguration
 from app.render_jobs.repository import JobRepository
 
@@ -188,3 +190,34 @@ def test_cleanup_marker_is_idempotent(repository: JobRepository) -> None:
 
     assert repository.mark_cleanup_done(created.id)
     assert not repository.mark_cleanup_done(created.id)
+
+
+def test_repeated_cancel_polling_closes_every_sqlite_connection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    opened = 0
+    closed = 0
+    real_connect = sqlite3.connect
+
+    class TrackingConnection(sqlite3.Connection):
+        def close(self) -> None:
+            nonlocal closed
+            closed += 1
+            super().close()
+
+    def tracking_connect(*args, **kwargs):  # type: ignore[no-untyped-def]
+        nonlocal opened
+        opened += 1
+        return real_connect(*args, **kwargs, factory=TrackingConnection)
+
+    monkeypatch.setattr(repository_module.sqlite3, "connect", tracking_connect)
+    tracked = JobRepository(tmp_path / "tracked.sqlite3")
+    tracked.initialize()
+    created = tracked.create_job(configuration())
+    assert tracked.claim_next("worker") is not None
+
+    for _ in range(2_000):
+        assert not tracked.is_cancel_requested(created.id, "worker")
+
+    assert opened >= 2_000
+    assert opened == closed

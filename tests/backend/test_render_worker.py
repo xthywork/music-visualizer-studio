@@ -4,10 +4,12 @@ import threading
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
+from app.render_jobs import worker as worker_module
 from app.render_jobs.lifecycle import JobLifecycle
 from app.render_jobs.models import JobErrorCode, JobState, RenderConfiguration
 from app.render_jobs.repository import JobRepository
@@ -68,6 +70,33 @@ def test_worker_publishes_completed_output_and_cleans_sources(tmp_path: Path) ->
     assert record.cleanup_done
     assert storage.output_path(job_id).read_bytes() == b"mp4"
     assert not storage.asset_path(job_id, AssetKind.AUDIO).exists()
+
+
+def test_worker_throttles_repeated_database_cancel_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository, storage, lifecycle = services(tmp_path)
+    job_id = queued_job(repository, storage)
+    cancel_checks = 0
+    real_cancel_check = repository.is_cancel_requested
+
+    def count_cancel_checks(job: str, worker: str) -> bool:
+        nonlocal cancel_checks
+        cancel_checks += 1
+        return real_cancel_check(job, worker)
+
+    monkeypatch.setattr(repository, "is_cancel_requested", count_cancel_checks)
+    monkeypatch.setattr(worker_module.time, "monotonic", lambda: 10.0)
+
+    def execute(record, _worker, cancelled, _progress):  # type: ignore[no-untyped-def]
+        for _ in range(10_000):
+            assert not cancelled()
+        storage.output_path(record.id).write_bytes(b"mp4")
+        return storage.output_relative_path(record.id)
+
+    assert RenderWorker(repository, lifecycle, execute, worker_id="worker").run_once()
+    assert repository.require(job_id).state == JobState.COMPLETED
+    assert cancel_checks == 2
 
 
 def test_cancel_after_output_publication_wins_and_removes_output(tmp_path: Path) -> None:
