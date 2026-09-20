@@ -5,6 +5,7 @@ from __future__ import annotations
 import multiprocessing
 from concurrent.futures import Future, ProcessPoolExecutor, TimeoutError
 from dataclasses import dataclass
+from itertools import chain
 from types import TracebackType
 from typing import Callable, Iterator
 
@@ -138,3 +139,16 @@ class ParallelFrameSource:
                 self.futures[next_to_submit] = executor.submit(_render_frame, next_to_submit)
                 next_to_submit += 1
             yield payload
+
+    def prime(self) -> Iterator[bytes]:
+        """Start every fork worker before the caller opens an encoder pipe.
+
+        ``ProcessPoolExecutor`` launches all fork workers on its first submit.
+        Consuming the first frame here therefore guarantees that a subsequently
+        spawned FFmpeg process cannot have its stdin descriptor inherited by a
+        frame child. The returned iterator still contains every frame in order.
+        """
+
+        iterator = iter(self)
+        first = next(iterator)
+        return chain((first,), iterator)

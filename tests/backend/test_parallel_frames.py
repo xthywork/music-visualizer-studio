@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import multiprocessing
+import os
 
 import numpy as np
 from PIL import Image
@@ -60,6 +61,22 @@ def test_parallel_frames_are_bounded_and_yielded_in_frame_order() -> None:
     assert [payload[:3] for payload in payloads] == [
         bytes((frame, frame + 1, frame + 2)) for frame in range(8)
     ]
+
+
+@pytest.mark.skipif("fork" not in multiprocessing.get_all_start_methods(), reason="requires fork")
+def test_priming_starts_children_before_later_encoder_pipe_is_opened() -> None:
+    plan = FramePlan(total_frames=8, width=4, height=3, frame_rate=8)
+    with ParallelFrameSource(
+        NumberedScene(), analysis(), plan, workers=4, cancelled=lambda: False
+    ) as frames:
+        ordered = frames.prime()
+        read_descriptor, write_descriptor = os.pipe()
+        try:
+            os.close(write_descriptor)
+            assert os.read(read_descriptor, 1) == b""
+            assert len(list(ordered)) == plan.total_frames
+        finally:
+            os.close(read_descriptor)
 
 
 @pytest.mark.skipif("fork" not in multiprocessing.get_all_start_methods(), reason="requires fork")

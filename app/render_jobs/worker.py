@@ -271,8 +271,9 @@ class JobRenderer:
             workers=self.settings.frame_workers,
             cancelled=cancelled,
         ) as frames:
+            ordered_frames = frames.prime()
             self.encoder.encode(
-                frames,
+                ordered_frames,
                 output,
                 audio_path=audio_path,
                 partial_path=self.storage.work_path(record.id, "output.part.mp4"),
