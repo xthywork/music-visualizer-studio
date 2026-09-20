@@ -20,6 +20,7 @@ class FramePlan:
     width: int
     height: int
     frame_rate: int
+    mode: str = "RGB"
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,7 +48,7 @@ def _render_frame(frame_number: int) -> bytes:
             analysis=context.analysis,
         )
     )
-    if image.mode != "RGB" or image.size != (plan.width, plan.height):
+    if image.mode != plan.mode or image.size != (plan.width, plan.height):
         raise ValueError("scene returned a frame with the wrong mode or dimensions")
     return image.tobytes()
 
@@ -58,7 +59,7 @@ class ParallelFrameSource:
     The production target is Linux. ``fork`` lets children share immutable
     scene assets and NumPy analysis pages copy-on-write rather than serializing
     large source images into every process. Exactly ``workers`` futures remain
-    in flight, bounding completed RGB payloads to the worker count.
+    in flight, bounding completed raw-frame payloads to the worker count.
     """
 
     def __init__(

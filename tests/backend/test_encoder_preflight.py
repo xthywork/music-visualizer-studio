@@ -46,8 +46,13 @@ def test_probe_requires_real_encode_and_verified_h264_metadata(tmp_path: Path) -
     result = EncoderProbe(tmp_path, ffmpeg=encoder, ffprobe=verifier).check()
     assert result.ready is True
     assert "h264_nvenc" in encoder.calls[0]
+    assert any("format=rgba" in argument for argument in encoder.calls[0])
+    assert "-rgb_mode" in encoder.calls[0]
     assert "lavfi" in encoder.calls[0]
-    assert "color=c=black:s=1280x720:r=30:d=0.2" in encoder.calls[0]
+    assert any(
+        "color=c=black:s=1280x720:r=30:d=0.2" in argument
+        for argument in encoder.calls[0]
+    )
     assert encoder.calls[0][encoder.calls[0].index("-preset") + 1] == "p4"
     assert verifier.calls[0][-1].endswith("probe.mp4")
     assert not list(tmp_path.iterdir())

@@ -66,7 +66,7 @@ def test_nvenc_output_contract(
     )
     audio = tmp_path / f"{label}.wav"
     write_tone(audio, duration=duration)
-    frame = Image.new("RGB", (width, height), "#17242d")
+    frame = Image.new("RGBA", (width, height), "#17242d")
     total_frames = math.ceil(duration * fps)
     final = tmp_path / f"{label}.mp4"
     StreamingEncoder.from_binary("ffmpeg").encode(

@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from bisect import bisect_right
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 from PIL import Image, ImageDraw
@@ -39,14 +40,16 @@ def create_scene(
     configuration: RenderConfiguration,
     assets: SceneAssets,
     fonts: FontBook,
+    *,
+    output_mode: Literal["RGB", "RGBA"] = "RGB",
 ) -> ServerScene:
     if configuration.template_id in {"night-orbit", "dawn-spectrum"}:
-        return InstrumentalScene(configuration, assets, fonts)
+        return InstrumentalScene(configuration, assets, fonts, output_mode=output_mode)
     if configuration.template_id == "quiet-editorial":
-        return QuietEditorialScene(configuration, assets, fonts)
+        return QuietEditorialScene(configuration, assets, fonts, output_mode=output_mode)
     if configuration.template_id == "paper-resonance":
-        return PaperResonanceScene(configuration, assets, fonts)
-    return LyricScene(configuration, assets, fonts)
+        return PaperResonanceScene(configuration, assets, fonts, output_mode=output_mode)
+    return LyricScene(configuration, assets, fonts, output_mode=output_mode)
 
 
 class _BaseScene:
@@ -55,11 +58,19 @@ class _BaseScene:
         configuration: RenderConfiguration,
         assets: SceneAssets,
         fonts: FontBook,
+        *,
+        output_mode: Literal["RGB", "RGBA"] = "RGB",
     ) -> None:
         self.configuration = configuration
         self.assets = assets
         self.fonts = fonts
+        self.output_mode = output_mode
         self.settings = settings_for(configuration)
+
+    def _output(self, canvas: Image.Image) -> Image.Image:
+        if self.output_mode == "RGBA":
+            return canvas
+        return canvas.convert("RGB")
 
     def _cover(
         self,
@@ -183,7 +194,7 @@ class InstrumentalScene(_BaseScene):
         artist_font = self.fonts.get(short * 0.021)
         draw.text((text_x, text_y + short * 0.05), fit_text(draw, self.configuration.text.artist or "Unknown Artist", artist_font, maximum), font=artist_font, fill=rgba(ink, 0.62), anchor=anchor)
         self._time_footer(draw, frame, self.settings.accent)
-        return canvas.convert("RGB")
+        return self._output(canvas)
 
     def _dawn_spectrum(self, frame: SceneFrame) -> Image.Image:
         width, height = frame.width, frame.height
@@ -223,7 +234,7 @@ class InstrumentalScene(_BaseScene):
                 points.append((margin + wave_width * unit, baseline + side * short * 0.052 * band * self.settings.motion * envelope * carrier))
             draw.line(points, fill=rgba(self.settings.accent, alpha), width=max(1, round(short * 0.0028)), joint="curve")
         self._time_footer(draw, frame, self.settings.accent)
-        return canvas.convert("RGB")
+        return self._output(canvas)
 
 
 class QuietEditorialScene(_BaseScene):
@@ -232,8 +243,10 @@ class QuietEditorialScene(_BaseScene):
         configuration: RenderConfiguration,
         assets: SceneAssets,
         fonts: FontBook,
+        *,
+        output_mode: Literal["RGB", "RGBA"] = "RGB",
     ) -> None:
-        super().__init__(configuration, assets, fonts)
+        super().__init__(configuration, assets, fonts, output_mode=output_mode)
         self._static_canvases: dict[tuple[int, int], Image.Image] = {}
 
     def render(self, frame: SceneFrame) -> Image.Image:
@@ -285,7 +298,7 @@ class QuietEditorialScene(_BaseScene):
             bar_x = text_x + index * text_width * 0.88 / bars
             draw.rectangle((bar_x, baseline - bar_height, bar_x + max(1, short * 0.0023), baseline), fill=rgba(self.settings.accent, 0.9))
         self._time_footer(draw, frame, self.settings.accent)
-        return canvas.convert("RGB")
+        return self._output(canvas)
 
 
 class PaperResonanceScene(_BaseScene):
@@ -341,7 +354,7 @@ class PaperResonanceScene(_BaseScene):
                 points.append((margin + wave_width * unit, wave_y + amplitude * envelope * carrier))
             draw.line(points, fill=rgba(colors[layer % len(colors)]), width=max(1, round(short * (0.0045 if layer == 0 else 0.002))), joint="curve")
         self._time_footer(draw, frame, self.settings.accent)
-        return canvas.convert("RGB")
+        return self._output(canvas)
 
 
 def lyric_scroll(cues, time: float) -> tuple[int, float]:
@@ -413,7 +426,7 @@ class LyricScene(_BaseScene):
             x = width * 0.25 + index * width * 0.5 / 50
             draw.rectangle((x, height * 0.9 - bar_height, x + max(1, short * 0.0018), height * 0.9), fill=rgba(self.settings.accent))
         self._time_footer(draw, frame, self.settings.accent)
-        return canvas.convert("RGB")
+        return self._output(canvas)
 
     def _poetry(self, frame: SceneFrame) -> Image.Image:
         width, height = frame.width, frame.height
@@ -452,4 +465,4 @@ class LyricScene(_BaseScene):
                 points.append((margin + unit * (page - margin * 2), height * 0.87 + wave * envelope * short * 0.014 * min(1, low * self.settings.motion) / (1 + layer * 0.16)))
             draw.line(points, fill=rgba(colors[layer % len(colors)]), width=max(1, round(short * (0.0025 if layer == 0 else 0.0016))), joint="curve")
         self._time_footer(draw, frame, self.settings.accent)
-        return canvas.convert("RGB")
+        return self._output(canvas)

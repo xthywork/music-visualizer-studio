@@ -163,6 +163,29 @@ def test_instrumental_and_editorial_scenes_react_to_audio() -> None:
         assert hashlib.sha256(quiet.tobytes()).digest() != hashlib.sha256(loud.tobytes()).digest()
 
 
+def test_nvenc_rgba_scene_preserves_rendered_rgb_pixels() -> None:
+    config = configuration("quiet-editorial", "16:9")
+    assets = SceneAssets(cover=ImageAsset.cover(), background=ImageAsset.background())
+    frame = SceneFrame(
+        time=1,
+        frame=30,
+        total_frames=120,
+        width=320,
+        height=180,
+        analysis=analysis(0.5),
+    )
+    rgb = create_scene(config, assets, font_book()).render(frame)
+    rgba_image = create_scene(
+        config,
+        assets,
+        font_book(),
+        output_mode="RGBA",
+    ).render(frame)
+
+    assert rgba_image.mode == "RGBA"
+    assert rgba_image.convert("RGB").tobytes() == rgb.tobytes()
+
+
 def test_quiet_editorial_static_cache_does_not_capture_dynamic_frame_content() -> None:
     config = configuration("quiet-editorial", "16:9")
     assets = SceneAssets(cover=ImageAsset.cover(), background=ImageAsset.background())

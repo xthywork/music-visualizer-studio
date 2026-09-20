@@ -55,10 +55,12 @@ def encoder_arguments(
     if not math.isfinite(duration) or duration <= 0:
         raise ValueError("duration must be positive and finite")
     bitrate = video_bitrate(output)
+    uses_nvenc = encoder.endswith("_nvenc")
+    input_pixel_format = "rgba" if uses_nvenc else "rgb24"
     # NVENC and libx264 use different preset namespaces.  The software
     # integration path must not inherit the production-only NVENC `p4` value.
-    preset = "p4" if encoder.endswith("_nvenc") else "veryfast"
-    return [
+    preset = "p4" if uses_nvenc else "veryfast"
+    arguments = [
         "-hide_banner",
         "-loglevel",
         "error",
@@ -66,7 +68,7 @@ def encoder_arguments(
         "-f",
         "rawvideo",
         "-pix_fmt",
-        "rgb24",
+        input_pixel_format,
         "-video_size",
         f"{output.width}x{output.height}",
         "-framerate",
@@ -91,8 +93,15 @@ def encoder_arguments(
         bitrate,
         "-bufsize",
         f"{int(bitrate[:-1]) * 2}M",
-        "-pix_fmt",
-        "yuv420p",
+    ]
+    if uses_nvenc:
+        # Packed RGBA is accepted directly by NVENC. Its RGB mode performs the
+        # 4:2:0 conversion on the GPU instead of making FFmpeg run swscale on
+        # the CPU before every encoded frame.
+        arguments.extend(["-rgb_mode", "yuv420"])
+    else:
+        arguments.extend(["-pix_fmt", "yuv420p"])
+    arguments.extend([
         "-c:a",
         "aac",
         "-b:a",
@@ -107,11 +116,12 @@ def encoder_arguments(
         "+faststart",
         "-y",
         str(partial_path),
-    ]
+    ])
+    return arguments
 
 
 class StreamingEncoder:
-    """Write exactly one RGB frame at a time and atomically publish the MP4."""
+    """Write exactly one raw frame at a time and atomically publish the MP4."""
 
     def __init__(
         self,
@@ -123,6 +133,10 @@ class StreamingEncoder:
         self.runner = runner
         self.encoder = encoder
         self.pipe_poll_seconds = pipe_poll_seconds
+
+    @property
+    def frame_mode(self) -> str:
+        return "RGBA" if self.encoder.endswith("_nvenc") else "RGB"
 
     @classmethod
     def from_binary(cls, ffmpeg_path: str) -> "StreamingEncoder":
@@ -176,12 +190,16 @@ class StreamingEncoder:
                         break
                     if cancelled():
                         raise RenderCancelled("Render cancellation was requested.")
+                    channels = 4 if self.frame_mode == "RGBA" else 3
                     if isinstance(frame, bytes):
                         payload = frame
-                        if len(payload) != output.width * output.height * 3:
+                        if len(payload) != output.width * output.height * channels:
                             raise ValueError("scene returned a frame with the wrong byte length")
                     else:
-                        if frame.mode != "RGB" or frame.size != (output.width, output.height):
+                        if frame.mode != self.frame_mode or frame.size != (
+                            output.width,
+                            output.height,
+                        ):
                             raise ValueError("scene returned a frame with the wrong mode or dimensions")
                         payload = frame.tobytes()
                     self._write_frame(

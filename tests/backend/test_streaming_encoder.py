@@ -23,7 +23,7 @@ def output(width: int = 1280, height: int = 720, fps: int = 30) -> OutputConfigu
     )
 
 
-def test_encoder_command_uses_raw_rgb_nvenc_aac_and_yuv420p(tmp_path: Path) -> None:
+def test_encoder_command_uses_raw_rgba_nvenc_aac_and_gpu_yuv420(tmp_path: Path) -> None:
     arguments = encoder_arguments(
         output(),
         audio_path=tmp_path / "audio.bin",
@@ -32,10 +32,11 @@ def test_encoder_command_uses_raw_rgb_nvenc_aac_and_yuv420p(tmp_path: Path) -> N
     )
     joined = " ".join(arguments)
     assert "rawvideo" in arguments
-    assert "rgb24" in arguments
+    assert "rgba" in arguments
     assert "h264_nvenc" in arguments
     assert "aac" in arguments
-    assert "yuv420p" in arguments
+    assert "yuv420p" not in arguments
+    assert arguments[arguments.index("-rgb_mode") + 1] == "yuv420"
     assert "pipe:0" in arguments
     assert "-shortest" not in arguments
     assert "+faststart" in arguments
@@ -54,6 +55,10 @@ def test_encoder_command_uses_encoder_specific_preset_namespaces(tmp_path: Path)
 
     assert nvenc[nvenc.index("-preset") + 1] == "p4"
     assert software[software.index("-preset") + 1] == "veryfast"
+    assert nvenc[nvenc.index("-pix_fmt") + 1] == "rgba"
+    assert software[software.index("-pix_fmt") + 1] == "rgb24"
+    assert "-rgb_mode" not in software
+    assert "yuv420p" in software
     assert "p4" not in software
 
 
@@ -108,6 +113,24 @@ def test_wrong_raw_frame_byte_length_terminates_and_removes_partial(tmp_path: Pa
     assert not partial.exists()
 
 
+def test_nvenc_rejects_rgb_image_instead_of_silently_misreading_it(tmp_path: Path) -> None:
+    runner = ProcessAdapter(
+        sys.executable,
+        error_code=JobErrorCode.ENCODE_FAILED,
+        label="fake encoder",
+    )
+    with pytest.raises(ValueError, match="wrong mode or dimensions"):
+        StreamingEncoder(runner).encode(
+            [Image.new("RGB", (1280, 720))],
+            output(),
+            audio_path=tmp_path / "audio.bin",
+            partial_path=tmp_path / "partial.mp4",
+            final_path=tmp_path / "final.mp4",
+            duration=1,
+            total_frames=1,
+        )
+
+
 def test_cancellation_breaks_out_when_child_stops_reading_pipe(tmp_path: Path) -> None:
     runner = ProcessAdapter(
         sys.executable,
@@ -134,7 +157,7 @@ def test_cancellation_breaks_out_when_child_stops_reading_pipe(tmp_path: Path) -
         checks += 1
         return checks > 3
 
-    frame = Image.new("RGB", (1280, 720))
+    frame = Image.new("RGBA", (1280, 720))
     with pytest.raises(RenderCancelled):
         SleepingEncoder(runner).encode(
             [frame],

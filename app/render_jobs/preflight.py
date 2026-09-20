@@ -99,7 +99,7 @@ class EncoderProbe:
             # Probe the smallest supported production preset instead of a
             # tiny synthetic frame that some NVENC generations reject even
             # though every user-selectable output size is supported.
-            "color=c=black:s=1280x720:r=30:d=0.2",
+            "color=c=black:s=1280x720:r=30:d=0.2,format=rgba",
             "-an",
             "-c:v",
             self.encoder,
@@ -107,8 +107,8 @@ class EncoderProbe:
             "p4",
             "-profile:v",
             "high",
-            "-pix_fmt",
-            "yuv420p",
+            "-rgb_mode",
+            "yuv420",
             "-movflags",
             "+faststart",
             "-y",

@@ -29,6 +29,15 @@ class InvalidScene:
         return Image.new("RGBA", (frame.width, frame.height))
 
 
+class RgbaNumberedScene:
+    def render(self, frame: SceneFrame) -> Image.Image:
+        return Image.new(
+            "RGBA",
+            (frame.width, frame.height),
+            (frame.frame, frame.frame + 1, frame.frame + 2, 255),
+        )
+
+
 def analysis() -> AudioAnalysis:
     values = np.ones(8, dtype=np.float32)
     return AudioAnalysis(
@@ -60,6 +69,20 @@ def test_parallel_frames_are_bounded_and_yielded_in_frame_order() -> None:
     assert len(payloads) == 8
     assert [payload[:3] for payload in payloads] == [
         bytes((frame, frame + 1, frame + 2)) for frame in range(8)
+    ]
+
+
+@pytest.mark.skipif("fork" not in multiprocessing.get_all_start_methods(), reason="requires fork")
+def test_parallel_frames_emit_rgba_for_direct_nvenc_input() -> None:
+    plan = FramePlan(total_frames=2, width=4, height=3, frame_rate=8, mode="RGBA")
+    with ParallelFrameSource(
+        RgbaNumberedScene(), analysis(), plan, workers=2, cancelled=lambda: False
+    ) as frames:
+        payloads = list(frames)
+
+    assert all(len(payload) == plan.width * plan.height * 4 for payload in payloads)
+    assert [payload[:4] for payload in payloads] == [
+        bytes((frame, frame + 1, frame + 2, 255)) for frame in range(2)
     ]
 
 

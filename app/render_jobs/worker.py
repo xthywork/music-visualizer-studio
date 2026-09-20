@@ -254,6 +254,7 @@ class JobRenderer:
                 background_path if background_path.is_file() else None,
             ),
             FontBook(self.settings.font_path),
+            output_mode=self.encoder.frame_mode,
         )
         output = record.configuration.output
         total_frames = max(1, math.ceil(duration * output.frame_rate))
@@ -267,6 +268,7 @@ class JobRenderer:
                 width=output.width,
                 height=output.height,
                 frame_rate=output.frame_rate,
+                mode=self.encoder.frame_mode,
             ),
             workers=self.settings.frame_workers,
             cancelled=cancelled,
