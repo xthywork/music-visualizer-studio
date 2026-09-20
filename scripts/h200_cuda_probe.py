@@ -9,6 +9,8 @@ host memory for libx264.
 from __future__ import annotations
 
 import argparse
+import shutil
+import subprocess
 import time
 
 import numpy as np
@@ -18,7 +20,7 @@ try:
 except ImportError as error:  # pragma: no cover - exercised on the H200 host
     raise SystemExit(
         "CuPy is unavailable. Run this script with "
-        "`uv run --with 'cupy-cuda12x[ctk]>=14,<15' ...`."
+        "`uv run --with 'cupy-cuda13x[ctk]>=14,<15' ...`."
     ) from error
 
 
@@ -81,8 +83,18 @@ def main() -> None:
     parser.add_argument("--frames", type=int, default=120)
     parser.add_argument("--width", type=int, default=3840)
     parser.add_argument("--height", type=int, default=2160)
+    parser.add_argument("--encode", action="store_true")
+    parser.add_argument("--frame-rate", type=int, default=60)
+    parser.add_argument("--encoder-threads", type=int, default=24)
+    parser.add_argument("--encoder-preset", default="veryfast")
     arguments = parser.parse_args()
-    if arguments.frames < 1 or arguments.width < 1 or arguments.height < 1:
+    if min(
+        arguments.frames,
+        arguments.width,
+        arguments.height,
+        arguments.frame_rate,
+        arguments.encoder_threads,
+    ) < 1:
         raise SystemExit("frames, width, and height must be positive")
 
     device = cp.cuda.Device(0)
@@ -145,6 +157,76 @@ def main() -> None:
     print(f"cuda_composite_and_download_fps={fps:.2f}")
     print(f"effective_download_gib_s={throughput:.2f}")
     print(f"host_checksum={int(host[0, 0].sum())}")
+
+    if arguments.encode:
+        ffmpeg = shutil.which("ffmpeg")
+        if ffmpeg is None:
+            raise SystemExit("ffmpeg is not available on PATH")
+        command = [
+            ffmpeg,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-nostdin",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "-video_size",
+            f"{width}x{height}",
+            "-framerate",
+            str(arguments.frame_rate),
+            "-i",
+            "pipe:0",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            arguments.encoder_preset,
+            "-threads",
+            str(arguments.encoder_threads),
+            "-pix_fmt",
+            "yuv420p",
+            "-f",
+            "null",
+            "-",
+        ]
+        process = subprocess.Popen(
+            command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+        if process.stdin is None or process.stderr is None:
+            process.kill()
+            raise SystemExit("failed to open FFmpeg pipes")
+        encoded_started = time.perf_counter()
+        try:
+            for frame_number in range(arguments.frames):
+                render(frame_number)
+                pending = memoryview(host).cast("B")
+                while pending:
+                    written = process.stdin.write(pending)
+                    if written is None or written <= 0:
+                        raise BrokenPipeError("FFmpeg stopped reading frames")
+                    pending = pending[written:]
+            process.stdin.close()
+            returncode = process.wait()
+            diagnostic = process.stderr.read().decode(errors="replace")
+        except BaseException:
+            process.kill()
+            process.wait()
+            raise
+        if returncode != 0:
+            raise SystemExit(
+                f"FFmpeg exited with {returncode}: {diagnostic.strip()}"
+            )
+        encoded_elapsed = time.perf_counter() - encoded_started
+        encoded_fps = arguments.frames / encoded_elapsed
+        print(f"encoder=libx264/{arguments.encoder_preset}")
+        print(f"encoder_threads={arguments.encoder_threads}")
+        print(f"gpu_to_libx264_seconds={encoded_elapsed:.3f}")
+        print(f"gpu_to_libx264_fps={encoded_fps:.2f}")
 
 
 if __name__ == "__main__":

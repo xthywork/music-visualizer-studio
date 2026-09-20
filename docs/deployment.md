@@ -45,11 +45,18 @@ uv run music-visualizer
 H200 沒有可用的 NVENC；若要評估將 frame composition 搬到 CUDA，可用不修改正式環境的臨時 CuPy runtime 執行 4K RGB composite/download probe：
 
 ```bash
-uv run --with 'cupy-cuda12x[ctk]>=14,<15' \
+uv run --with 'cupy-cuda13x[ctk]>=14,<15' \
   python scripts/h200_cuda_probe.py --frames 120
 ```
 
 此 probe 不會產生影片或改變 production renderer，只測量靜態畫布常駐 VRAM、動態 overlay 與每幀下載回 host memory 的上限。
+
+確認 CUDA probe 可用後，可加上 `--encode`，測量 GPU frame 串流給 24-thread `libx264` 的端到端上限；輸出送往 FFmpeg null muxer，不會留下影片：
+
+```bash
+python scripts/h200_cuda_probe.py --frames 1200 --encode \
+  --encoder-threads 24 --encoder-preset veryfast
+```
 
 介面預設選擇「伺服器」。使用者也可在專案列表底部改選「此裝置」，由瀏覽器以 AudioContext、Web Worker、WebCodecs 與 MP4 muxer 生成，不使用伺服器 CPU/GPU。客戶端模式需要支援 WebCodecs、module Worker 與所選 codec/解析度的現代瀏覽器；實際能力會隨輸出設定重新檢查。任一模式不可用時只會停用該模式的生成，不會自動切換。
 

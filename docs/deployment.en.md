@@ -45,11 +45,18 @@ uv run music-visualizer
 H200 has no usable NVENC. To evaluate moving frame composition to CUDA, run the 4K RGB composite/download probe with an ephemeral CuPy runtime that does not change the production environment:
 
 ```bash
-uv run --with 'cupy-cuda12x[ctk]>=14,<15' \
+uv run --with 'cupy-cuda13x[ctk]>=14,<15' \
   python scripts/h200_cuda_probe.py --frames 120
 ```
 
 The probe does not generate a video or change the production renderer. It measures the ceiling for keeping the static canvas in VRAM, drawing a dynamic overlay, and downloading each frame to host memory.
+
+After the CUDA probe works, add `--encode` to measure the end-to-end ceiling for streaming GPU frames into 24-thread `libx264`. Output goes to FFmpeg's null muxer and leaves no video behind:
+
+```bash
+python scripts/h200_cuda_probe.py --frames 1200 --encode \
+  --encoder-threads 24 --encoder-preset veryfast
+```
 
 The UI defaults to Server. Users can select This Device at the bottom of the project list to generate with AudioContext, a Web Worker, WebCodecs, and an MP4 muxer without using server CPU/GPU. Client mode requires a modern browser with WebCodecs, module Workers, and support for the selected codec and dimensions; capability is rechecked when output settings change. An unavailable mode disables generation for that mode and never switches automatically.
 
