@@ -9,7 +9,7 @@
 - An NVIDIA driver and FFmpeg/`ffprobe` with `h264_nvenc` for hardware acceptance
 - Node.js and npm only for developers changing frontend source
 
-Official rendering runs only on the server: FFmpeg decodes audio, NumPy analyzes it, Pillow draws each scene frame on the CPU, and FFmpeg uses NVIDIA `h264_nvenc` to encode H.264 `yuv420p` video with AAC audio into MP4. SQLite stores the single-host queue, and one background worker processes jobs in order by default. The browser only uploads assets, checks status, cancels jobs, previews, and downloads.
+There are two production output paths. Server mode uses FFmpeg decoding, NumPy analysis, CPU Pillow frame drawing, NVIDIA `h264_nvenc`, and AAC; SQLite stores the single-host queue and one background worker processes jobs in order by default. This Device mode reuses the scene configuration and generates in the browser with AudioContext, a module Worker, WebCodecs, and an MP4 muxer.
 
 ## Python development and software checks
 
@@ -45,8 +45,8 @@ git status --short dist
 
 ## Privacy and storage invariants
 
-- Project settings, template appearance, parsed subtitle cues, and server job/output references stay in browser-local storage.
-- When a render job is created, source audio, required images, and subtitles are uploaded to an isolated server temporary area and removed after completion, failure, cancellation, or confirmed interruption.
-- Completed MP4s remain on the server until explicitly deleted; there is no implicit TTL.
+- Project settings, template appearance, parsed subtitle cues, client output metadata, and server job references stay in browser-local storage.
+- When a server render is created, source audio, required images, and subtitles are uploaded to an isolated temporary area and removed after completion, failure, cancellation, or confirmed interruption. A client render creates no server job.
+- Server MP4s remain until explicitly deleted. Client MP4s are saved in IndexedDB when quota permits; quota-failed Blobs exist only in the current tab.
 - Jobs use UUID-derived directories and a single-host SQLite queue. Never use a client filename or absolute path as a server path.
 - This account-free service is for a trusted network/VPN only. Access across networks requires an authenticated reverse proxy; do not expose it as a public SaaS.

@@ -4,10 +4,10 @@
 
 ## 產品目標
 
-讓使用者設定專案並取得由伺服器產生的精緻音樂視覺化影片：
+讓使用者設定專案，並選擇由伺服器或目前裝置產生精緻音樂視覺化影片：
 
 ```text
-設定專案 → 上傳並提交 → 伺服器生成 → 預覽／下載 MP4
+設定專案 → 選擇渲染位置 → 生成 → 預覽／下載 MP4
 ```
 
 介面應減少不必要的決策，同時保留實用的輸出自訂能力。
@@ -15,19 +15,19 @@
 ## 使用流程
 
 1. 在瀏覽器選擇音訊、模板、可選圖片與歌名／歌手，調整模板設定。
-2. 選擇畫面比例、解析度及幀率；伺服器能力與容量不足時說明原因並停用提交。
-3. 將設定及本次工作所需音訊、圖片、字幕上傳至伺服器。
-4. 透過 SQLite 持久化的單機佇列提交工作；瀏覽器顯示 uploading、queued、running、completed、cancelled、failed、interrupted 狀態及進度，並允許取消。
-5. 只使用伺服器生成的 completed MP4 作預覽與下載；重新載入時依 server job identity 取得權威狀態。
+2. 選擇畫面比例、解析度及幀率，以及專案列表底部的伺服器／此裝置渲染位置；依所選模式檢查能力，不自動 fallback。
+3. 伺服器模式將設定及本次素材上傳至單機佇列；此裝置模式在瀏覽器 Worker 內處理。
+4. 顯示準備、排隊（伺服器）、渲染、完成、取消、失敗或中斷狀態及進度，並允許取消該次工作。
+5. 依 render source 預覽與下載 completed MP4；重新載入時，server output 依 job identity 確認，client output 依 IndexedDB 實際 Blob 判定。
 6. 專案設定與解析後字幕保存在瀏覽器本機；原始音訊不保存在專案，建立新工作時需重新選擇。
 
 ## 支援輸出
 
 - 畫面比例：16:9、9:16、1:1
 - 最高目標：4K、60 fps
-- Resolution 選項依畫面比例限制，且需由 server worker capability check 接受。
+- Resolution 選項依畫面比例限制，且需由目前選定模式的 capability check 接受。
 - Server CPU 使用 Pillow 與 NumPy 分析音訊並逐幀繪製；NVIDIA NVENC 輸出 H.264 `yuv420p`，搭配 AAC 封裝成 MP4。
-- 正式輸出不得使用 browser renderer、WebCodecs 或客戶端 MP4 muxer。
+- 此裝置模式使用 AudioContext、Web Worker、WebCodecs 與客戶端 MP4 muxer；是否支援 4K60 由瀏覽器與裝置能力決定。
 
 ## 模板與編輯器
 
@@ -63,7 +63,7 @@ Spectrum Cover 與 Vinyl Particle 已退役。使用任一 identifier（或舊 A
 
 Editor 使用示範 audio feature 與無聲的定時歌詞 preview，不播放上傳歌曲，也不提供 scrubber。SRT 匯入前會顯示有標示的範例歌詞；範例不會 export 或 persist。實際 export 使用匯入的 cue start 與上傳音訊分析。
 
-模板使用穩定、可序列化的 scene configuration，由伺服器 worker 生成正式輸出；前端模板示意不執行影片逐幀渲染。
+模板使用穩定、可序列化的 scene configuration，供伺服器 worker 與客戶端 render worker 生成正式輸出；編輯器內的即時模板示意本身不等於正式逐幀輸出。
 
 ## 專案紀錄
 
@@ -75,14 +75,14 @@ Editor 使用示範 audio feature 與無聲的定時歌詞 preview，不播放�
 - 封面／背景圖片資料或 local reference，受 browser quota 限制
 - 各模板解析後的字幕文字／起始時間與設定
 - 畫面比例、解析度與幀率
-- Server job identity、last-known render status 與錯誤資訊
-- Server output availability/reference（不代表輸出仍存在）
+- Render source、status 與錯誤資訊
+- Server job/output reference，或 client output metadata／IndexedDB Blob reference
 
-原始音訊 bytes、file metadata、絕對路徑與 file handle 不屬於 persisted project record。音訊、渲染需要的圖片與字幕只上傳到伺服器 job 暫存目錄，工作完成、失敗、取消或確認中斷後清除。重新開啟專案後，建立新工作前必須再次選擇來源音訊。
+原始音訊 bytes、file metadata、絕對路徑與 file handle 不屬於 persisted project record。伺服器模式把本次需要的素材上傳至 job 暫存目錄並在終止後清除；此裝置模式只在目前頁面／Worker 使用來源。重新開啟專案後，建立新工作前必須再次選擇來源音訊。
 
 Artwork 只接受 PNG、JPEG、WebP，不接受 SVG。超尺寸或不一致的 image header 與 decode failure 必須在素材進入 preview、worker 或 project persistence 前拒絕。
 
-成功完成的 MP4 保存在伺服器，直到使用者明確刪除輸出／工作或管理者明確清理。刪除 output 時保留本機專案設定；若 server output 不存在，必須標示 unavailable，不得宣稱仍可下載。
+成功的 server MP4 保存在伺服器直到明確刪除；client MP4 在 quota 允許時保存於 IndexedDB。若 client persistence 失敗，當前分頁仍提供立即下載，但 reload 後必須標示未保存。刪除任一 output 時保留專案設定；不存在的輸出必須標示 unavailable。
 
 ## MVP 非目標
 
@@ -93,4 +93,4 @@ Artwork 只接受 PNG、JPEG、WebP，不接受 SVG。超尺寸或不一致的 i
 - 16:9、9:16、1:1 以外的比例
 - 保證每台裝置都能渲染 4K60
 - 帳號、租戶、計費或公開 SaaS
-- Browser-side rendering 或 server output 的自動過期
+- Server/client 自動 fallback 或 server output 自動過期

@@ -9,7 +9,7 @@
 - NVIDIA driver 與支援 `h264_nvenc` 的 FFmpeg/`ffprobe` 用於硬體驗收
 - Node.js 與 npm 僅供修改前端 source 的開發者使用
 
-正式渲染只在伺服器執行：FFmpeg 解碼音訊，NumPy 執行分析，Pillow 在 CPU 上逐幀繪製場景，FFmpeg 使用 NVIDIA `h264_nvenc` 編碼 H.264 `yuv420p` 影片和 AAC 音訊，輸出 MP4。SQLite 保存單機佇列，預設單一背景 worker 依序處理工作。瀏覽器只上傳素材、查詢狀態、取消工作、預覽與下載。
+正式輸出有兩條 production path。伺服器模式由 FFmpeg 解碼、NumPy 分析、Pillow 在 CPU 逐幀繪製，再以 NVIDIA `h264_nvenc` 和 AAC 輸出 MP4；SQLite 保存單機佇列，預設單一背景 worker 依序處理。此裝置模式復用 scene configuration，以 AudioContext、module Worker、WebCodecs 與 MP4 muxer 在瀏覽器生成。
 
 ## Python 開發與軟體測試
 
@@ -45,8 +45,8 @@ git status --short dist
 
 ## 隱私與儲存不變條件
 
-- 專案設定、模板外觀、解析後的字幕 cue 與 server job/output reference 留在瀏覽器本機。
-- 建立 render job 時，來源音訊、所需圖片與字幕上傳至隔離的伺服器暫存區；在完成、失敗、取消或確認中斷後清除。
-- Completed MP4 保留於伺服器，直到明確刪除；不設隱含 TTL。
+- 專案設定、模板外觀、解析後的字幕 cue，以及 client output metadata／server job reference 留在瀏覽器本機。
+- Server render 建立時，來源音訊、所需圖片與字幕上傳至隔離的伺服器暫存區；在完成、失敗、取消或確認中斷後清除。Client render 不建立 server job。
+- Server MP4 保留於伺服器直到明確刪除；client MP4 在 quota 允許時保存於 IndexedDB，quota 失敗的 Blob 只在目前分頁暫存。
 - Job 使用 UUID 衍生目錄與 SQLite 單機 queue；不要把 client filename 或絕對路徑當成 server path。
 - 此無帳號服務僅限可信任網路/VPN；跨網路存取需透過具有驗證的 reverse proxy，不可直接作為 public SaaS 暴露。

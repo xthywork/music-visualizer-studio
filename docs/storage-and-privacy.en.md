@@ -5,23 +5,24 @@
 ## Data flow
 
 ```text
-Saved in the browser: project settings, template settings, parsed subtitle cues, job/output reference
-                                  |
-                 Upload audio, required images, and subtitles for a job
-                                  v
-Isolated server job directory
-  |-- used during audio analysis and CPU scene rendering
-  |-- source assets and intermediate files removed after completion, failure, cancellation, or confirmed interruption
-  +-- completed MP4 retained on the server until explicit deletion
+Browser-local: project/template settings, subtitle cues, mixed render history
+  |-- Server: upload audio, images, and subtitles for this job
+  |      +-- isolated temporary data is cleaned at termination;
+  |          completed MP4 retained until explicit deletion
+  |
+  +-- This Device: sources used only by the current render
+         +-- completed MP4 stored in IndexedDB when quota permits
 ```
 
-Official rendering happens on the server. The browser uploads only the assets needed for a job when the user submits it, and handles project settings, status checks, cancellation, preview, and download. The server stores job status in SQLite. Completed MP4s remain in the server output directory and have no automatic expiry or deletion.
+Users can render on the server or on the current device. Server mode uploads only the assets needed for that job and stores job status in SQLite; completed MP4s remain in the server output directory with no automatic deletion. This Device mode does not send assets to a server render job and processes them in browser memory and a Worker.
 
 ## Browser-local data
 
-A project record can contain its name, template and output settings, title/artist, image data, parsed subtitle cues, per-template appearance, render history, and server job identity with the last known status/output availability. A server reference is used to refresh status; it does not prove that an output still exists. Reopening a project checks with the server.
+A project record can contain its name, template and output settings, title/artist, image data, parsed subtitle cues, per-template appearance, render history, client output metadata, or server job identity with the last known status/output availability. A server reference is used to refresh status; it does not prove that an output still exists. Reopening a project checks with the server.
 
 Raw SRT bytes, filename, and cue end times are not saved; parsed subtitle text and start times can remain in project settings. Source audio is not saved in a project, so reopening a project and starting another job requires selecting audio again. Browser-local data can be removed by clearing site data, browser policy, or quota eviction and is not a backup.
+
+Client MP4 Blobs are saved in IndexedDB when space permits. If a completed render cannot be persisted, its Blob remains available for immediate preview and download only in the current tab and project. It is released after switching or deleting the project, creating a new project, replacing the output, or reloading; the project must not claim that it remains downloadable.
 
 ## Server temporary files and completed outputs
 

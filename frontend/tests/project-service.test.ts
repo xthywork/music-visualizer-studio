@@ -107,6 +107,29 @@ describe("ProjectService", () => {
     expect(unconfirmed.server?.statusConfirmed).toBe(false);
   });
 
+  it("keeps client blobs and server references isolated in mixed render history", async () => {
+    const service = serviceFor(new InMemoryProjectStorage());
+    const project = await service.createProject("Mixed", configuration);
+    const local = await service.queueRender(project.id, "render-local");
+    await service.recordCompletedRender(project.id, local.id, new Blob(["local-mp4"]), {
+      mimeType: "video/mp4", byteLength: 9, durationMs: 1000, width: 1080, height: 1080,
+      frameRate: 30, createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    const server = await service.queueRender(project.id, "render-server");
+    await service.updateServerRender(project.id, server.id, {
+      jobId: "job-server", state: "completed", outputAvailable: true, statusConfirmed: true,
+      updatedAt: "2026-01-01T00:00:01.000Z", outputUrl: "/api/render-jobs/job-server/output",
+    });
+
+    const reopened = await service.reopenProject(project.id);
+    expect(reopened?.renders.map((render) => Boolean(render.server))).toEqual([false, true]);
+    expect(await service.getOutput(project.id, local.id)).toBeDefined();
+    expect(await service.getOutput(project.id, server.id)).toBeUndefined();
+
+    await service.deleteOutput(project.id, local.id);
+    expect((await service.reopenProject(project.id))?.renders[1].server?.jobId).toBe("job-server");
+  });
+
   it("lists, reopens, deletes output only, and then deletes projects", async () => {
     const service = serviceFor(new InMemoryProjectStorage());
     const project = await service.createProject("Controls", configuration);

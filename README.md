@@ -2,10 +2,10 @@
 
 [English](README.en.md)
 
-Music Visualizer Studio 將音訊與視覺模板製作成可下載的 MP4。正式影片一律由伺服器生成；瀏覽器負責編輯專案設定、上傳本次工作所需素材、查詢進度、取消工作，以及播放或下載完成影片。
+Music Visualizer Studio 將音訊與視覺模板製作成可下載的 MP4。使用者可在專案列表底部選擇由伺服器生成，或由目前瀏覽器使用 WebCodecs 生成；首次使用預設為伺服器模式。
 
 ```text
-選擇音訊與模板 → 設定輸出 → 上傳並提交 → 伺服器渲染 → 預覽／下載 MP4
+選擇音訊與模板 → 設定輸出與渲染位置 → 生成 → 預覽／下載 MP4
 ```
 
 ## 目前功能
@@ -13,10 +13,11 @@ Music Visualizer Studio 將音訊與視覺模板製作成可下載的 MP4。正�
 - 六種視覺模板：Night Orbit、Dawn Spectrum、Paper Resonance、Quiet Editorial、Panorama Lyrics 與 Poetry Lyrics
 - 16:9、9:16、1:1 畫面比例，720p、1080p、4K 輸出，以及 30 或 60 fps
 - MP3、WAV、M4A 音訊，單首最長 10 分鐘；PNG、JPEG、WebP 圖片；歌詞模板支援 UTF-8 SRT
-- 專案設定與字幕文字保存在瀏覽器本機；來源音訊、圖片與字幕只在伺服器工作期間暫存
+- 專案設定與字幕文字保存在瀏覽器本機；來源音訊不寫入專案紀錄
 - 伺服器以 Pillow 與 NumPy 在 CPU 上分析音訊並逐幀繪製場景，再由 NVIDIA NVENC 編碼 H.264 `yuv420p` 影片，搭配 AAC 音訊封裝成 MP4
+- 此裝置模式以 AudioContext、Web Worker、WebCodecs 與 MP4 muxer 在瀏覽器完成分析、繪製與封裝；是否可用依瀏覽器和所選輸出即時檢查，不會自動切換模式
 - SQLite 保存單機工作佇列與狀態，預設由一個背景 worker 依序渲染
-- 暫存來源素材會在工作完成、失敗、取消或確認中斷後清除。完成的 MP4 會留在伺服器，直到使用者明確刪除
+- 伺服器暫存來源素材會在工作終止後清除，完成 MP4 留存至明確刪除；客戶端 MP4 在容量允許時保存於瀏覽器 IndexedDB
 
 ## 伺服器需求
 

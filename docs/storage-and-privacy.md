@@ -5,23 +5,23 @@
 ## 資料流
 
 ```text
-瀏覽器本機保存：專案設定、模板設定、解析後的字幕 cue、job/output reference
-                         |
-             建立工作時上傳音訊、所需圖片與字幕
-                         v
-伺服器隔離的 job 暫存目錄
-  |-- 音訊分析與 CPU 場景渲染期間使用
-  |-- 完成、失敗、取消或確認中斷後清除來源素材與中間檔
-  +-- 完成 MP4 留存在伺服器，直到明確刪除
+瀏覽器本機：專案／模板設定、字幕 cue、混合 render history
+  |-- 伺服器模式：上傳本次音訊、圖片與字幕
+  |      +-- 隔離暫存區終止後清除；完成 MP4 留存至明確刪除
+  |
+  +-- 此裝置模式：來源只供目前 render 使用
+         +-- 完成 MP4 在 quota 允許時保存於 IndexedDB
 ```
 
-正式渲染發生在伺服器。瀏覽器只在使用者建立工作時上傳本次所需素材，並負責設定、狀態查詢、取消、預覽及下載。伺服器以 SQLite 保存 job 狀態；完成 MP4 保存在伺服器輸出目錄，預設沒有自動期限或自動刪除。
+使用者可選擇伺服器或此裝置渲染。伺服器模式會上傳本次工作素材，並以 SQLite 保存 job 狀態；完成 MP4 保存在伺服器輸出目錄，預設不自動刪除。此裝置模式不把素材送入 server render job，而是在瀏覽器記憶體與 Worker 中處理。
 
 ## 瀏覽器本機資料
 
-專案紀錄可包含專案名稱、模板與輸出設定、歌名／歌手、圖片資料、解析後的字幕 cue、各模板外觀設定、render history，以及 server job identity 和 last-known status/output availability。Server reference 是狀態查詢依據，不代表輸出仍存在；重新開啟專案會向伺服器確認。
+專案紀錄可包含專案名稱、模板與輸出設定、歌名／歌手、圖片資料、解析後的字幕 cue、各模板外觀設定、render history，以及 client output metadata 或 server job identity 和 last-known status/output availability。Server reference 是狀態查詢依據，不代表輸出仍存在；重新開啟專案會向伺服器確認。
 
 原始 SRT bytes、檔名與 cue end time 不保存；解析後的字幕文字與 start time 可留在專案設定中。來源音訊不會保存於專案，重新開啟專案後建立新工作須重新選擇音訊。瀏覽器本機儲存可能因清除網站資料、瀏覽器政策或 quota eviction 而遺失，不是備份。
+
+Client MP4 在空間允許時以 Blob 保存於 IndexedDB。若 render 已完成但寫入失敗，Blob 只在目前分頁與專案中暫存，仍可立即預覽及下載；切換／刪除專案、建立新專案、被新輸出取代或 reload 後會釋放，專案不得宣稱它仍可下載。
 
 ## 伺服器暫存與完成輸出
 

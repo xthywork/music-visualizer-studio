@@ -23,8 +23,17 @@ import { ProjectSaveCoordinator } from "./ui/project-save-coordinator";
 import { normalizeImageFile } from "./ui/image-assets";
 import { LatestRequestGate } from "./ui/latest-request";
 import { renderProgressMessage } from "./ui/render-progress";
+import {
+  RenderCapabilityGate,
+  readRenderMode,
+  writeRenderMode,
+  type RenderMode,
+} from "./ui/render-mode";
+import { detectCapabilities } from "./render/capabilities";
+import { renderConfigFromDomain } from "./render/domain-adapter";
 import { createScene } from "./render/scenes";
 import type { AudioAnalysis } from "./render/types";
+import { RenderController, type RenderUpdate } from "./workers/orchestrator";
 import type { LyricCue, TemplateSettings, TemplateSettingsMap } from "./domain/models";
 import { defaultSettings, isLyricTemplate, SETTING_RANGES, PALETTES } from "./domain/template-settings";
 import { MAX_SRT_BYTES, parseSrt } from "./domain/subtitles";
@@ -105,21 +114,38 @@ let saveTimer: number | undefined;
 let workspaceToken = 0;
 let workspaceNavigationToken = 0;
 let expandedProjectId: string | null = null;
-interface ActiveRenderSession {
+interface RenderSessionBase {
   readonly workspaceToken: number;
   readonly sourceAudio?: File;
   projectId?: string;
   renderId?: string;
-  serverJobId?: string;
   cancelRequested: boolean;
   finalized: boolean;
   updates: Promise<void>;
   readonly finished: Promise<void>;
   readonly resolveFinished: () => void;
 }
+interface ServerRenderSession extends RenderSessionBase {
+  readonly mode: "server";
+  serverJobId?: string;
+}
+interface ClientRenderSession extends RenderSessionBase {
+  readonly mode: "client";
+  controller?: RenderController;
+}
+type ActiveRenderSession = ServerRenderSession | ClientRenderSession;
+interface VolatileOutput {
+  readonly renderId: string;
+  readonly blob: Blob;
+  readonly projectName: string;
+}
 let activeRenderSession: ActiveRenderSession | null = null;
-let serverCapabilityReady = false;
-const capabilityRequests = new LatestRequestGate();
+const volatileOutputs = new Map<string, VolatileOutput>();
+let renderCapabilityReady = false;
+const capabilityRequests = new RenderCapabilityGate();
+let preferenceStorage: Storage | undefined;
+try { preferenceStorage = window.localStorage; } catch { preferenceStorage = undefined; }
+let renderMode: RenderMode = readRenderMode(preferenceStorage);
 const audioRequests = new LatestRequestGate();
 const subtitleRequests = new LatestRequestGate();
 const imageRequests: Record<ImageTarget, LatestRequestGate> = {
@@ -140,6 +166,13 @@ app.innerHTML = `
       <p class="side-label">本機專案</p>
       <div class="project-list" id="project-list"><p class="empty-projects">專案與輸出只會儲存在這個瀏覽器。</p></div>
       <p class="storage-usage" id="storage-usage">正在讀取本機用量…</p>
+      <fieldset class="render-location" id="render-location">
+        <legend>渲染位置</legend>
+        <div class="render-location-options">
+          <label><input type="radio" name="render-location" value="server" /><span>伺服器</span></label>
+          <label><input type="radio" name="render-location" value="client" /><span>此裝置</span></label>
+        </div>
+      </fieldset>
     </aside>
     <section class="workspace">
       <div class="layout">
@@ -182,7 +215,7 @@ app.innerHTML = `
             </div>
           </div>
           <div class="section">
-              <div class="section-title"><h2>3. 輸出設定</h2><span>伺服器處理</span></div>
+              <div class="section-title"><h2>3. 輸出設定</h2><span id="output-mode-label">伺服器處理</span></div>
             <div class="setting-block output-settings">
               <div class="subsection-title"><strong>輸出規格</strong><span id="dimensions-label">1920 × 1080</span></div>
               <div class="fields output-fields">
@@ -190,7 +223,7 @@ app.innerHTML = `
                 <label class="field">解析度<select id="resolution-select"></select></label>
                 <label class="field">影格率<select id="fps-select"></select></label>
               </div>
-              <p class="render-mode" id="render-mode" role="status">渲染模式：伺服器繪製 · NVIDIA NVENC 編碼</p>
+              <p class="render-mode" id="render-mode" role="status"></p>
             </div>
           </div>
         </div><div class="render-controls">
@@ -232,6 +265,9 @@ const cancelButton = document.querySelector<HTMLButtonElement>("#cancel-button")
 const renderStatus = document.querySelector<HTMLSpanElement>("#render-status")!;
 const progressValue = document.querySelector<HTMLSpanElement>("#progress-value")!;
 const progressBar = document.querySelector<HTMLDivElement>("#progress-bar")!;
+const renderModeInputs = [...document.querySelectorAll<HTMLInputElement>('input[name="render-location"]')];
+const renderModeDescription = document.querySelector<HTMLParagraphElement>("#render-mode")!;
+const outputModeLabel = document.querySelector<HTMLSpanElement>("#output-mode-label")!;
 
 function fitPreviewStage(): void {
   const bounds = stageWrap.getBoundingClientRect();
@@ -272,24 +308,52 @@ function renderTemplateCards(): void {
 
 function currentSettings(): TemplateSettings { return state.templateSettings[state.templateId] ?? defaultSettings(state.templateId); }
 function updateRenderAvailability() {
-  renderButton.disabled = !state.audioFile || !serverCapabilityReady || Boolean(activeRenderSession) || (isLyricTemplate(state.templateId) && !state.lyrics.length);
+  renderButton.disabled = !state.audioFile || !renderCapabilityReady || Boolean(activeRenderSession) || (isLyricTemplate(state.templateId) && !state.lyrics.length);
+  for (const input of renderModeInputs) input.disabled = Boolean(activeRenderSession);
 }
 
-async function refreshServerCapability(): Promise<void> {
-  const token = capabilityRequests.begin();
-  capability.textContent = "正在檢查伺服器渲染能力…";
+function outputCapabilityKey(): string {
+  const output = configurationFromState().output;
+  return `${output.width}x${output.height}@${output.frameRate}`;
+}
+
+function syncRenderModeUi(): void {
+  for (const input of renderModeInputs) input.checked = input.value === renderMode;
+  const server = renderMode === "server";
+  outputModeLabel.textContent = server ? "伺服器處理" : "此裝置處理";
+  renderModeDescription.textContent = server
+    ? "渲染模式：伺服器 CPU 繪製 · NVIDIA NVENC 編碼"
+    : "渲染模式：此裝置 Web Worker 繪製 · WebCodecs 編碼";
+}
+
+async function refreshRenderCapability(): Promise<void> {
+  const mode = renderMode;
+  const request = capabilityRequests.begin(mode, outputCapabilityKey());
+  renderCapabilityReady = false;
+  updateRenderAvailability();
+  capability.textContent = mode === "server" ? "正在檢查伺服器渲染能力…" : "正在檢查此裝置編碼能力…";
   try {
-    const result = await renderJobApi.capabilities();
-    if (!capabilityRequests.isCurrent(token)) return;
-    serverCapabilityReady = result.ready;
-    capability.textContent = result.ready
-      ? "伺服器 NVENC 已就緒"
-      : result.reason ?? "伺服器渲染工作者目前不可用";
-    capability.style.color = result.ready ? "#64f0d0" : "#ff6f88";
+    if (mode === "server") {
+      const result = await renderJobApi.capabilities();
+      if (!capabilityRequests.isCurrent(request)) return;
+      renderCapabilityReady = result.ready;
+      capability.textContent = result.ready
+        ? "伺服器 NVENC 已就緒"
+        : result.reason ?? "伺服器渲染工作者目前不可用";
+    } else {
+      const result = await detectCapabilities(renderConfigFromDomain(configurationFromState()).output);
+      if (!capabilityRequests.isCurrent(request)) return;
+      renderCapabilityReady = result.supported;
+      capability.textContent = result.supported
+        ? `此裝置 WebCodecs 已就緒 · ${result.codecPath ?? "MP4"}`
+        : `此裝置不可用：${result.reasons.join(" ")}`;
+    }
+    capability.style.color = renderCapabilityReady ? "#64f0d0" : "#ff6f88";
   } catch (error) {
-    if (!capabilityRequests.isCurrent(token)) return;
-    serverCapabilityReady = false;
-    capability.textContent = error instanceof Error ? `無法確認伺服器能力：${error.message}` : "無法確認伺服器渲染能力";
+    if (!capabilityRequests.isCurrent(request)) return;
+    renderCapabilityReady = false;
+    const target = mode === "server" ? "伺服器" : "此裝置";
+    capability.textContent = error instanceof Error ? `無法確認${target}能力：${error.message}` : `無法確認${target}渲染能力`;
     capability.style.color = "#ff6f88";
   }
   updateRenderAvailability();
@@ -516,6 +580,7 @@ async function refreshProjects(): Promise<void> {
       renderStatus.textContent = message;
       return;
     }
+    releaseVolatileOutput(id);
     if (currentProjectId === id) resetDraft();
     try {
       await refreshProjects();
@@ -557,6 +622,7 @@ async function openProject(projectId: string): Promise<void> {
   workspaceToken += 1;
   currentProjectId = project.id;
   if (previousProjectId && previousProjectId !== project.id) {
+    releaseVolatileOutput(previousProjectId);
     clearOutputPreview();
   }
   state.templateId = config.templateId;
@@ -589,7 +655,7 @@ async function openProject(projectId: string): Promise<void> {
     latestProject = (await projectService.reopenProject(project.id)) ?? project;
     const current = latestProject.renders.find((render) => render.id === latestRender.id) ?? latestRender;
     if (current.server && ["queued", "running"].includes(current.server.state)) {
-      activeRenderSession = createActiveRenderSession(workspaceToken, project.id, current.id);
+      activeRenderSession = createActiveRenderSession("server", workspaceToken, project.id, current.id);
       pausePreview();
       cancelButton.hidden = false;
     }
@@ -601,6 +667,12 @@ async function openProject(projectId: string): Promise<void> {
 
 async function showLatestOutput(project: ProjectRecord): Promise<void> {
   if (currentProjectId !== project.id) return;
+  const volatile = volatileOutputs.get(project.id);
+  if (volatile) {
+    presentOutputBlob(project.id, volatile.renderId, volatile.blob, volatile.projectName);
+    renderStatus.textContent = "最新生成版本僅保留在此分頁，可預覽或下載；關閉分頁前請先下載。";
+    return;
+  }
   const latest = project.renders.at(-1);
   if (latest?.server) {
     if (latest.server.statusConfirmed && latest.server.state === "completed" && latest.server.outputAvailable && latest.server.outputUrl) {
@@ -705,7 +777,15 @@ function clearOutputPreview(): void {
   closeOutputDeleteConfirmation();
 }
 
+function releaseVolatileOutput(projectId: string): void {
+  if (!volatileOutputs.delete(projectId)) return;
+  if (currentProjectId === projectId) clearOutputPreview();
+  const row = document.querySelector<HTMLElement>(`.project-row[data-project-row="${projectId}"] small`);
+  if (row) row.textContent = "本機 MP4 未保存";
+}
+
 function resetDraft(): void {
+  if (currentProjectId) releaseVolatileOutput(currentProjectId);
   renderJobPoller.setWorkspace(null);
   workspaceNavigationToken += 1;
   invalidateMediaRequests();
@@ -757,6 +837,7 @@ function setRenderProgress(progress: number, message: string): void {
 }
 
 function createActiveRenderSession(
+  mode: RenderMode,
   token: number,
   projectId: string,
   renderId: string,
@@ -765,6 +846,7 @@ function createActiveRenderSession(
   let resolveFinished!: () => void;
   const finished = new Promise<void>((resolve) => { resolveFinished = resolve; });
   return {
+    mode,
     workspaceToken: token,
     ...(sourceAudio ? { sourceAudio } : {}),
     projectId,
@@ -805,13 +887,15 @@ async function startRender(): Promise<void> {
   if (isLyricTemplate(state.templateId) && !state.lyrics.length) { renderStatus.textContent = "請先匯入 SRT 字幕。"; return; }
   if (!state.audioFile || activeRenderSession) return;
   const sourceAudio = state.audioFile;
-  const session: ActiveRenderSession = createActiveRenderSession(workspaceToken, currentProjectId ?? "", "", sourceAudio);
+  const mode = renderMode;
+  const session = createActiveRenderSession(mode, workspaceToken, currentProjectId ?? "", "", sourceAudio);
   activeRenderSession = session;
   pausePreview();
+  updateRenderAvailability();
   try {
     renderButton.disabled = true;
     cancelButton.hidden = false;
-    setRenderProgress(0, "正在準備上傳素材…");
+    setRenderProgress(0, mode === "server" ? "正在準備上傳素材…" : "正在準備本機渲染…");
     const project = await saveProject();
     if (session.finalized) return;
     session.projectId = project.id;
@@ -824,6 +908,10 @@ async function startRender(): Promise<void> {
     session.renderId = renderRecord.id;
     if (session.cancelRequested) {
       await cancelRenderSession(session);
+      return;
+    }
+    if (session.mode === "client") {
+      await startClientRender(session, project.configuration, sourceAudio);
       return;
     }
     setRenderProgress(0, "正在準備伺服器上傳…");
@@ -856,6 +944,125 @@ async function startRender(): Promise<void> {
   }
 }
 
+async function decodeAudioForRender(file: File, isCurrent: () => boolean): Promise<AudioBuffer> {
+  const AudioContextCtor = window.AudioContext
+    ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextCtor) throw new Error("瀏覽器無法解碼音訊。請改用最新版 Chrome 或 Edge。");
+  const audioContext = new AudioContextCtor();
+  try {
+    const bytes = await file.arrayBuffer();
+    if (!isCurrent()) throw new Error("音訊解碼請求已失效。");
+    const decoded = await audioContext.decodeAudioData(bytes);
+    if (!isCurrent()) throw new Error("音訊解碼請求已失效。");
+    return decoded;
+  } finally {
+    await audioContext.close().catch(() => undefined);
+  }
+}
+
+async function startClientRender(
+  session: ClientRenderSession,
+  configuration: RenderConfiguration,
+  sourceAudio: File,
+): Promise<void> {
+  setRenderProgress(0, "正在此裝置解碼音訊…");
+  const audioBuffer = await decodeAudioForRender(sourceAudio, () => (
+    activeRenderSession === session
+    && session.workspaceToken === workspaceToken
+    && !session.finalized
+  ));
+  if (session.finalized) return;
+  if (session.cancelRequested) {
+    await cancelRenderSession(session);
+    return;
+  }
+  const renderConfig = renderConfigFromDomain(configuration);
+  const currentCapability = await detectCapabilities(renderConfig.output);
+  if (session.finalized) return;
+  if (!currentCapability.supported) throw new Error(currentCapability.reasons.join(" "));
+  if (session.cancelRequested) {
+    await cancelRenderSession(session);
+    return;
+  }
+  const worker = new Worker(new URL("./workers/render-worker.ts", import.meta.url), { type: "module" });
+  worker.onerror = (event) => enqueueClientRenderUpdate(session, () => failRenderSession(
+    session,
+    new Error(event.message || "渲染 Worker 發生錯誤。"),
+    "worker-error",
+  ));
+  const controller = new RenderController(worker);
+  session.controller = controller;
+  controller.onUpdate((update) => enqueueClientRenderUpdate(session, () => handleClientRenderUpdate(session, update)));
+  controller.startFromAudioBuffer(renderConfig, audioBuffer, session.renderId);
+}
+
+function enqueueClientRenderUpdate(session: ClientRenderSession, operation: () => Promise<void>): void {
+  session.updates = session.updates.then(operation).catch((error) => failRenderSession(
+    session,
+    error instanceof Error ? error : new Error(String(error)),
+    "render-update",
+  ));
+}
+
+async function handleClientRenderUpdate(session: ClientRenderSession, update: RenderUpdate): Promise<void> {
+  if (activeRenderSession !== session || session.finalized || !session.projectId || !session.renderId) return;
+  if (update.response.type === "start") {
+    await projectSaveCoordinator.runExclusive(() => projectService.markRendering(session.projectId!, session.renderId!));
+    setRenderProgress(0, "正在此裝置生成 MP4…");
+    return;
+  }
+  if (update.response.type === "progress") {
+    setRenderProgress(
+      update.response.progress,
+      renderProgressMessage(update.response.frame, update.response.totalFrames, update.response.etaMs),
+    );
+    return;
+  }
+  if (update.response.type === "complete") {
+    if (!claimRenderSession(session)) return;
+    const { output, metadata } = update.response;
+    const projectName = state.title.trim() || "Untitled Project";
+    volatileOutputs.set(session.projectId, { renderId: session.renderId, blob: output, projectName });
+    presentOutputBlob(session.projectId, session.renderId, output, projectName);
+    let message = "MP4 已生成，但未能保存到本機；目前仍可預覽與下載，關閉分頁前請先下載。";
+    try {
+      const result = await projectSaveCoordinator.runExclusive(() => projectService.recordCompletedRender(
+        session.projectId!,
+        session.renderId!,
+        output,
+        {
+          mimeType: "video/mp4",
+          byteLength: output.size,
+          durationMs: metadata.duration * 1000,
+          width: metadata.width,
+          height: metadata.height,
+          frameRate: metadata.frameRate,
+          createdAt: new Date().toISOString(),
+        },
+      ));
+      if (result.outputSaved) {
+        volatileOutputs.delete(session.projectId);
+        message = "MP4 已由此裝置生成並保存在本機瀏覽器。";
+      } else {
+        message = "MP4 已生成，但本機空間不足；目前仍可預覽與下載，關閉分頁前請先下載。";
+      }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      message = `MP4 已生成，但保存失敗（${detail}）；目前仍可預覽與下載。`;
+    } finally {
+      await finishRenderSession(session, message, true);
+    }
+    return;
+  }
+  if (update.response.type === "cancel") {
+    await cancelRenderSession(session);
+    return;
+  }
+  if (update.response.type === "error") {
+    await failRenderSession(session, new Error(update.response.error.message), update.response.error.code);
+  }
+}
+
 function serverReference(job: RenderJob): ServerRenderReference {
   return {
     jobId: job.id,
@@ -879,10 +1086,10 @@ function enqueueServerJob(workspaceId: string, job: RenderJob): void {
 
 async function applyServerJob(workspaceId: string, job: RenderJob): Promise<void> {
   const session = activeRenderSession;
-  if (session?.projectId === workspaceId && session.renderId && (!session.serverJobId || session.serverJobId === job.id)) {
+  if (session?.mode === "server" && session.projectId === workspaceId && session.renderId && (!session.serverJobId || session.serverJobId === job.id)) {
     session.serverJobId = job.id;
   }
-  const sessionRenderId = session?.projectId === workspaceId && session.serverJobId === job.id
+  const sessionRenderId = session?.mode === "server" && session.projectId === workspaceId && session.serverJobId === job.id
     ? session.renderId
     : undefined;
   const result = await projectSaveCoordinator.runExclusive(async () => {
@@ -903,6 +1110,7 @@ async function applyServerJob(workspaceId: string, job: RenderJob): Promise<void
     } else if (job.state === "running") {
       setRenderProgress(job.progress, `${renderProgressMessage(job.frame, job.totalFrames, job.etaSeconds == null ? undefined : job.etaSeconds * 1000)}${olderLocalPreviewSuffix(result.id)}`);
     } else if (job.state === "completed" && job.outputAvailable && job.outputUrl) {
+      volatileOutputs.delete(workspaceId);
       presentOutputUrl(workspaceId, result.id, job.outputUrl, (await projectService.reopenProject(workspaceId))?.name ?? "Music Visualizer");
       setRenderProgress(1, "伺服器 MP4 已完成，可預覽與下載。");
     } else {
@@ -918,7 +1126,7 @@ async function applyServerJob(workspaceId: string, job: RenderJob): Promise<void
       }
     }
   }
-  if (session && session.projectId === workspaceId && session.serverJobId === job.id
+  if (session?.mode === "server" && session.projectId === workspaceId && session.serverJobId === job.id
     && ["completed", "cancelled", "failed", "interrupted"].includes(job.state)) {
     const message = job.state === "completed"
       ? job.outputAvailable ? "伺服器 MP4 已完成，可預覽與下載。" : "渲染已完成，但伺服器輸出目前不可用。"
@@ -938,7 +1146,9 @@ function handleServerJobError(workspaceId: string, error: unknown): void {
   void projectSaveCoordinator.runExclusive(async () => {
     const project = await projectService.reopenProject(workspaceId);
     if (!project) return;
-    const active = activeRenderSession?.projectId === workspaceId ? activeRenderSession : undefined;
+    const active = activeRenderSession?.mode === "server" && activeRenderSession.projectId === workspaceId
+      ? activeRenderSession
+      : undefined;
     if (active?.renderId && !active.serverJobId) return;
     const jobId = active?.serverJobId;
     const render = (jobId ? project.renders.find((candidate) => candidate.server?.jobId === jobId) : undefined)
@@ -989,6 +1199,15 @@ async function failRenderSession(session: ActiveRenderSession, error: Error, cod
 
 async function finishRenderSession(session: ActiveRenderSession, message: string, completed: boolean): Promise<void> {
   try {
+    if (session.mode === "client") {
+      try {
+        session.controller?.dispose();
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        message = `${message}（Worker 清理失敗：${detail}）`;
+      }
+      session.controller = undefined;
+    }
     if (activeRenderSession === session) { activeRenderSession = null; resumePreview(); }
     const ownsWorkspace = session.workspaceToken === workspaceToken;
     cancelButton.hidden = true;
@@ -999,11 +1218,9 @@ async function finishRenderSession(session: ActiveRenderSession, message: string
         state.duration = null;
         document.querySelector<HTMLInputElement>("#audio-input")!.value = "";
         updateAudioPicker(null);
-        renderButton.disabled = true;
         setFileStatus("來源音訊已從工作階段釋放；重新生成時請再次選擇。", completed ? "success" : "");
-      } else {
-        updateRenderAvailability();
       }
+      updateRenderAvailability();
     } else {
       updateRenderAvailability();
     }
@@ -1028,6 +1245,13 @@ async function cancelActiveRenderForNavigation(projectId?: string): Promise<void
     return;
   }
   session.cancelRequested = true;
+  if (session.mode === "client") {
+    session.controller?.cancel();
+    if (session.renderId) await cancelRenderSession(session);
+    else if (claimRenderSession(session)) await finishRenderSession(session, "已停止本機渲染。", false);
+    await session.finished;
+    return;
+  }
   if (session.serverJobId && projectId) {
     await renderJobPoller.cancel();
     await session.finished;
@@ -1060,7 +1284,7 @@ function updateOutputLabels(): void {
   canvas.width = Math.round(preset.width * scale);
   canvas.height = Math.round(preset.height * scale);
   drawPreview();
-  updateRenderAvailability();
+  void refreshRenderCapability();
 }
 
 function drawPreview(): void {
@@ -1325,6 +1549,16 @@ document.querySelector("#edit-template")!.addEventListener("click", () => {
 ratioSelect.addEventListener("change", () => { state.aspectRatio = ratioSelect.value as AspectRatio; updateResolutionOptions(); scheduleProjectSave(); });
 resolutionSelect.addEventListener("change", () => { state.presetId = resolutionSelect.value; updateOutputLabels(); scheduleProjectSave(); });
 fpsSelect.addEventListener("change", () => { state.frameRate = Number(fpsSelect.value); updateOutputLabels(); scheduleProjectSave(); });
+for (const input of renderModeInputs) input.addEventListener("change", () => {
+  if (!input.checked || activeRenderSession) {
+    syncRenderModeUi();
+    return;
+  }
+  renderMode = input.value as RenderMode;
+  writeRenderMode(preferenceStorage, renderMode);
+  syncRenderModeUi();
+  void refreshRenderCapability();
+});
 document.querySelector<HTMLButtonElement>("#new-project")!.addEventListener("click", () => {
   void startNewDraft().catch((error) => {
     renderStatus.textContent = error instanceof Error ? error.message : "無法切換到新專案。";
@@ -1389,6 +1623,9 @@ document.querySelector<HTMLButtonElement>("#confirm-delete-output")!.addEventLis
       }
     } else {
       await projectSaveCoordinator.runExclusive(() => projectService.deleteOutput(target.projectId, target.renderId));
+      if (volatileOutputs.get(target.projectId)?.renderId === target.renderId) {
+        volatileOutputs.delete(target.projectId);
+      }
     }
     if (currentProjectId === target.projectId && document.querySelector<HTMLElement>("#output-actions")!.dataset.renderId === target.renderId) {
       clearOutputPreview(); renderStatus.textContent = "已刪除輸出影片，專案與素材設定仍保留。";
@@ -1405,7 +1642,10 @@ cancelButton.addEventListener("click", () => {
   if (!session || session.finalized) return;
   session.cancelRequested = true;
   renderStatus.textContent = "正在取消渲染…";
-  if (session.serverJobId) {
+  if (session.mode === "client") {
+    session.controller?.cancel();
+    enqueueClientRenderUpdate(session, () => cancelRenderSession(session));
+  } else if (session.serverJobId) {
     void renderJobPoller.cancel().catch(() => undefined);
   } else {
     renderJobPoller.setWorkspace(null);
@@ -1415,8 +1655,8 @@ cancelButton.addEventListener("click", () => {
 
 renderTemplateCards();
 populateOutputControls();
+syncRenderModeUi();
 drawPreview();
-void refreshServerCapability();
 function pausePreview() {
   stage.dataset.previewPaused = "true";
 }

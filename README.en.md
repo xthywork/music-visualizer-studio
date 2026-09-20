@@ -2,10 +2,10 @@
 
 [繁體中文](README.md)
 
-Music Visualizer Studio turns audio and a visual template into a downloadable MP4. Official video generation always runs on the server. The browser edits and stores project settings, uploads the assets for a job, checks progress, cancels a job, and plays or downloads the completed video.
+Music Visualizer Studio turns audio and a visual template into a downloadable MP4. At the bottom of the project list, users can choose server rendering or rendering on the current browser with WebCodecs. Server rendering is the default for first-time use.
 
 ```text
-Choose audio and template -> Configure output -> Upload and submit -> Server render -> Preview/download MP4
+Choose audio and template -> Configure output and render location -> Generate -> Preview/download MP4
 ```
 
 ## Current features
@@ -13,10 +13,11 @@ Choose audio and template -> Configure output -> Upload and submit -> Server ren
 - Six visual templates: Night Orbit, Dawn Spectrum, Paper Resonance, Quiet Editorial, Panorama Lyrics, and Poetry Lyrics
 - 16:9, 9:16, and 1:1 aspect ratios; 720p, 1080p, and 4K output; 30 or 60 fps
 - MP3, WAV, and M4A audio up to 10 minutes; PNG, JPEG, and WebP images; UTF-8 SRT for lyric templates
-- Project settings and parsed subtitle text stay in browser-local storage; source audio, images, and subtitle files are temporary server job inputs
+- Project settings and parsed subtitle text stay in browser-local storage; source audio is never written to a project record
 - The server uses Pillow and NumPy on the CPU for audio analysis and frame-by-frame scene drawing, then NVIDIA NVENC encodes H.264 `yuv420p` video with AAC audio into MP4
+- This Device mode uses AudioContext, a Web Worker, WebCodecs, and an MP4 muxer for browser-side analysis, drawing, and packaging. Availability is checked for the browser and selected output, with no automatic mode fallback
 - SQLite stores the single-host job queue and status; one background worker renders jobs in order by default
-- Temporary source assets are removed when a job completes, fails, is cancelled, or is confirmed interrupted. Completed MP4 files remain on the server until explicitly deleted
+- Server source assets are temporary and completed server MP4s remain until explicitly deleted. Client MP4s are stored in browser IndexedDB when quota permits
 
 ## Server requirements
 

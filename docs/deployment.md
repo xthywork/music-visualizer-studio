@@ -31,6 +31,8 @@ uv run music-visualizer
 
 Worker 的 preflight 會實際編碼短 H.264 `yuv420p` MP4，再由 `ffprobe` 確認輸出。若 FFmpeg、driver 或 NVENC session 不可用，HTTP service 仍可啟動，但 worker 顯示 unavailable，且不會接受無法完成的工作。
 
+介面預設選擇「伺服器」。使用者也可在專案列表底部改選「此裝置」，由瀏覽器以 AudioContext、Web Worker、WebCodecs 與 MP4 muxer 生成，不使用伺服器 CPU/GPU。客戶端模式需要支援 WebCodecs、module Worker 與所選 codec/解析度的現代瀏覽器；實際能力會隨輸出設定重新檢查。任一模式不可用時只會停用該模式的生成，不會自動切換。
+
 預設服務位址為 `0.0.0.0:34388`。本機檢查健康與 render 能力：
 
 ```bash

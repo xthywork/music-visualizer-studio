@@ -31,6 +31,8 @@ uv run music-visualizer
 
 The worker preflight encodes a short H.264 `yuv420p` MP4 and verifies it with `ffprobe`. If FFmpeg, the driver, or an NVENC session is unavailable, the HTTP service can still start, but the worker reports unavailable and does not accept jobs it cannot finish.
 
+The UI defaults to Server. Users can select This Device at the bottom of the project list to generate with AudioContext, a Web Worker, WebCodecs, and an MP4 muxer without using server CPU/GPU. Client mode requires a modern browser with WebCodecs, module Workers, and support for the selected codec and dimensions; capability is rechecked when output settings change. An unavailable mode disables generation for that mode and never switches automatically.
+
 The default service address is `0.0.0.0:34388`. Check health and render capability locally:
 
 ```bash

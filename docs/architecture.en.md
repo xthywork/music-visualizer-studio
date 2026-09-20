@@ -2,28 +2,28 @@
 
 [繁體中文](architecture.md)
 
-## Official render flow
+## Dual render flow
 
-All official MP4s are generated on the server. The browser stores project settings and parsed subtitle text, uploads the assets and configuration for a job, then checks status, cancels work, plays the completed video, or downloads the output. The browser does not perform official audio analysis, frame drawing, video encoding, or MP4 muxing.
+The browser stores project settings and parsed subtitle text. A control at the bottom of the project list selects Server or This Device. This is a browser-wide preference that defaults to Server. Each job keeps the mode selected at start, and an unavailable mode never falls back automatically.
 
 ```text
 Browser
-  |-- local project settings, subtitle text, and server job/output reference
-  |-- uploads audio, images, subtitles, and render configuration
-  |-- checks status / cancels / previews / downloads
-  v
-FastAPI service ─── SQLite single-host queue
-                         |
-                         v
-                 One background render worker
-                 CPU: FFmpeg decode, NumPy analysis, Pillow scene drawing
-                 NVIDIA NVENC: H.264 yuv420p + AAC -> MP4
-                         |
-                         +-- temporary sources and work files: cleaned at termination
-                         +-- completed output: retained until explicit deletion
+  |-- local project settings, subtitle text, and mixed render history
+  |
+  |-- Server: upload assets/config -> FastAPI -> SQLite queue
+  |                                      |
+  |                                      v
+  |                              background render worker
+  |                              CPU analysis and scene drawing
+  |                              NVIDIA NVENC + AAC -> MP4
+  |
+  +-- This Device: AudioContext -> Web Worker scene drawing
+                                   WebCodecs + MP4 muxer -> MP4
 ```
 
 The server target is Ubuntu Server 24.04, a Ryzen 9 5900X, and an NVIDIA GPU. The Python worker uses Pillow and NumPy on the CPU to produce RGB frames one at a time. FFmpeg streams those frames to `h264_nvenc`, encodes H.264 `yuv420p` video, encodes the source audio as AAC, and muxes an MP4. The frame pipeline is bounded, so memory use does not grow with the video's total frame count.
+
+This Device mode reuses the same serialized scene configuration. The main thread decodes audio through AudioContext; a module Worker draws frames and uses WebCodecs, then an MP4 muxer produces the Blob. Capability is checked for the selected resolution and frame rate. Client-side 4K60 availability depends on the browser, codecs, and device hardware.
 
 ## Queue and process boundary
 
@@ -35,7 +35,7 @@ Main job states are queued, running, completed, failed, cancelled, interrupted, 
 
 Each job has an isolated UUID-derived directory with input, work, and output areas. The server streams audio, images, and subtitles to disk, validates size, format, content, and configuration, then enqueues the job in SQLite. Source assets and intermediate files are idempotently removed when a job completes, fails, is cancelled, or is confirmed interrupted. A partial MP4 is never exposed as a completed output. Completed MP4s have no default TTL and remain until the user explicitly deletes the job/output or an administrator performs explicit cleanup.
 
-Project configuration and the last known job/output reference stay in browser-local storage. A reference does not prove that the server output still exists; reopening a project refreshes its status and can show it as unavailable. Source audio is not part of the project record, so it must be selected and uploaded again for a new render.
+Project configuration and render history stay in browser-local storage. A server reference does not prove that the output still exists; reopening a project refreshes it with the server. Client output Blobs are stored in IndexedDB when quota permits. If persistence fails, the new Blob remains available only in the current tab and is marked unsaved after leaving the project or reloading. Source audio is not part of the project record and must be selected again for a new render.
 
 ## Network boundary
 
